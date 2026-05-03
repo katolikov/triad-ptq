@@ -1,0 +1,34 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# uv lockfile (kept) and caches
+.uv-cache/
+
+# HF/Torch caches when accidentally placed locally
+.cache/
+hf_cache/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Large model dumps and intermediate logs (keep results/ tables/plots/samples though)
+checkpoints/
+*.pt
+*.pth
+*.bin.local
+*.safetensors.local
+logs/
+*.log
+
+# Pytest
+.pytest_cache/
