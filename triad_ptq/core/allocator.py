@@ -48,7 +48,14 @@ def allocate_bits(
     if S.size == 0:
         return AllocatorResult([], [], 0.0, 0.0, target_avg_bits)
 
+    # Center log-sensitivity at its weighted median so the continuous
+    # allocation's natural mean is `target_avg_bits` instead of being
+    # dominated by a few very-high-S layers (which would push the
+    # remaining majority to the lower clamp).
     log2S = np.log2(np.clip(S, 1e-18, None))
+    median_log = float(np.median(log2S))
+    log2S = log2S - median_log
+
     bit_options = tuple(sorted(bit_options))
     bmin, bmax = float(min(bit_options)), float(max(bit_options))
 

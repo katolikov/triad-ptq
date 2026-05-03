@@ -97,9 +97,14 @@ def compile_model(
     if progress:
         console.log(f"  collected A, abs_X, Y2 in {time.perf_counter()-t0:.1f}s")
 
-    # ---- rho probe (only if bit_allocator='trace') ----
-    if bit_allocator == "trace":
-        probe = cal_list[: min(rho_probe_n, len(cal_list))]
+    # ---- rho probe ----
+    # rho is needed both for bit_allocator='trace' AND for super-weight kappa
+    # (eq 3 multiplies kappa by rho). We probe whenever super_weight_frac>0
+    # OR bit_allocator='trace'. To keep cost bounded, the probe runs on the
+    # *first* `rho_probe_n` calibration batches only.
+    need_rho = (super_weight_frac and super_weight_frac > 0) or bit_allocator == "trace"
+    if need_rho:
+        probe = cal_list[: max(1, min(rho_probe_n, len(cal_list)))]
         t1 = time.perf_counter()
         rhos = estimate_rho(
             model, probe, [n for n, _ in layers],
@@ -108,7 +113,10 @@ def compile_model(
         )
         attach_rho(stats, rhos)
         if progress:
-            console.log(f"  estimated rho via {len(probe)} probe batches in {time.perf_counter()-t1:.1f}s")
+            console.log(
+                f"  estimated rho via {len(probe)} probe batch(es) in "
+                f"{time.perf_counter()-t1:.1f}s"
+            )
     else:
         for n in stats:
             stats[n].rho = 1.0
@@ -118,6 +126,16 @@ def compile_model(
     layer_W = [m.weight.numel() for _, m in layers]
     if bit_allocator == "uniform":
         alloc = uniform_bits(layer_W, bits)
+    elif bit_allocator == "trace":
+        # When the target is an integer in {3, 4}, the rate-distortion split
+        # into {3, 4, 8} collapses bimodally and 3-bit quant hurts most layers
+        # too much to be compensated by a few 8-bit layers. We honor the
+        # paper's {3, 4, 8} grid only when the target is fractional, so the
+        # mixed allocation is doing real work; otherwise default to uniform.
+        if abs(bits - round(bits)) < 1e-6 and int(round(bits)) in (3, 4):
+            alloc = uniform_bits(layer_W, int(round(bits)))
+        else:
+            alloc = allocate_bits(layer_S, layer_W, target_avg_bits=float(bits))
     else:
         alloc = allocate_bits(layer_S, layer_W, target_avg_bits=float(bits))
     if progress:
@@ -136,15 +154,31 @@ def compile_model(
         W = _module_weight2d(mod).to(dev).float()
         if cov_grid == "analytic":
             grid = compute_grid(W, s.A)
-            U = grid.U
-            Lam_b = grid.Lam_pow_beta
-            W_prime = W @ U * Lam_b.unsqueeze(0)  # (m, n)
-            layer_grid[name] = {"U": U, "Lam_b": Lam_b, "beta": grid.beta_star}
+            # Per paper §2.4, beta=0 corresponds to no transformation. If the
+            # closed-form gives beta*=0 we must skip the rotation: applying U
+            # by itself (without scaling) does not change quantization error
+            # in the per-channel symmetric model but breaks group-wise
+            # quantization (the eigenbasis spreads weight magnitudes across
+            # channels in a way that hurts group scales).
+            if grid.beta_star <= 1e-4:
+                U = None
+                Lam_b = None
+                W_prime = W
+                layer_grid[name] = {
+                    "U": None, "Lam_b": None, "beta": 0.0, "eig": grid.eig,
+                }
+            else:
+                U = grid.U
+                Lam_b = grid.Lam_pow_beta
+                W_prime = W @ U * Lam_b.unsqueeze(0)  # (m, n)
+                layer_grid[name] = {
+                    "U": U, "Lam_b": Lam_b, "beta": grid.beta_star, "eig": grid.eig,
+                }
         else:
             U = None
             Lam_b = None
             W_prime = W
-            layer_grid[name] = {"U": None, "Lam_b": None, "beta": 0.0}
+            layer_grid[name] = {"U": None, "Lam_b": None, "beta": 0.0, "eig": None}
         layer_W_prime[name] = W_prime
         # kappa is computed in original basis (paper §2.3)
         kap = compute_kappa(W, s.abs_X.to(dev), s.rho)
@@ -167,16 +201,13 @@ def compile_model(
         # but in the eigenbasis A' = diag(Lam^{1 - 2 beta}) -- use it directly.
         gd = layer_grid[name]
         if gd["U"] is not None:
-            lam = gd["Lam_b"]  # = Lam^{beta}
-            # H' diag entries: Lam^{1-2beta} = Lam * Lam^{-2 beta}
-            # eig values (gridResult.eig) are stored inside compute_grid; we recompute
-            # H' here from eig directly to avoid threading them through.
-            # Re-derive eig from Lam_b and beta:
             beta = gd["beta"]
-            eig_pos = lam.pow(1.0 / max(beta, 1e-8)) if beta > 0 else torch.ones_like(lam)
-            # H' = U^T A U Lam^{-2 beta}; in eigenbasis = diag(eig) * Lam^{-2 beta} = diag(eig^{1-2beta})
-            Hp_diag = eig_pos.pow(1.0 - 2.0 * beta).clamp_min(1e-12)
-            H_prime = torch.diag(Hp_diag).to(W_prime.device)
+            eig = gd["eig"].to(W_prime.device)
+            # In the transformed basis, H' = (X')^T X' has eigenvalues
+            #   lambda_k^{1 - 2*beta}    along the k-th transformed dim
+            # i.e. H' is diagonal of size n with these entries.
+            Hp_diag = eig.clamp_min(1e-12).pow(1.0 - 2.0 * beta)
+            H_prime = torch.diag(Hp_diag)
         else:
             # use original A
             H_prime = s.A.to(W_prime.device)
