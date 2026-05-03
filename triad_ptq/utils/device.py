@@ -31,7 +31,8 @@ def safe_eigh(mat: torch.Tensor, eps: float = 1e-6) -> tuple[torch.Tensor, torch
     a per-layer offline op on a small d x d matrix, not in the inference path.
     """
     dev = mat.device
-    A = mat.double().detach().cpu()
+    # MPS does not support float64; move to CPU first, then upcast.
+    A = mat.detach().cpu().double()
     A = A + eps * torch.eye(A.size(-1), dtype=A.dtype)
     L, U = torch.linalg.eigh(A)
     return L.to(dev, dtype=torch.float32), U.to(dev, dtype=torch.float32)
