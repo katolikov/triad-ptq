@@ -1,0 +1,340 @@
+{
+  "runs": [
+    {
+      "model": "HuggingFaceTB/SmolLM-135M",
+      "method": "FP32",
+      "bits": 32,
+      "ppl": 18.872955627475644,
+      "nll": 2.9377299781418964,
+      "n_eval_tokens": 32736,
+      "calib_sec": 0.0,
+      "eval_sec": 8.364662375010084,
+      "tok_per_sec": 38.58105801169125,
+      "samples": [
+        {
+          "prompt": "The capital of France is",
+          "completion": " Paris. It is the largest city in France and the second largest in the world. It is also the capital of the country. Paris is the capital of the country. Paris is the capital of the",
+          "n_new_tokens": 40,
+          "sec": 0.8867869999958202,
+          "tok_per_sec": 45.10666033691127
+        },
+        {
+          "prompt": "Photosynthesis is the process by which",
+          "completion": " plants and other organisms convert light energy into chemical energy.\nWhat is the process of photosynthesis?\nPhotosynthesis is the process by which plants and other organisms convert light energy into chemical energy. The process",
+          "n_new_tokens": 40,
+          "sec": 1.4725202500121668,
+          "tok_per_sec": 27.164312341150826
+        },
+        {
+          "prompt": "In a few sentences, the difference between machine learning and traditional programming is",
+          "completion": " that machine learning is a subset of artificial intelligence, and traditional programming is a subset of software engineering.\nMachine learning is a subset of artificial intelligence, and traditional programming is a subset of software engineering.",
+          "n_new_tokens": 40,
+          "sec": 1.390837874962017,
+          "tok_per_sec": 28.759642457315437
+        },
+        {
+          "prompt": "Once upon a time in a small village,",
+          "completion": " there lived a kind and wise woman named Mrs. Johnson. She was known throughout the land for her love of learning and helping others. One day, she decided to teach everyone about the importance of being",
+          "n_new_tokens": 40,
+          "sec": 1.4432131660287268,
+          "tok_per_sec": 27.715933405782003
+        },
+        {
+          "prompt": "Quantization in deep learning refers to",
+          "completion": " the process of reducing the number of parameters in a neural network while maintaining the learned features. This is achieved by minimizing the difference between the predicted output and the actual output.\n\nIn the context of",
+          "n_new_tokens": 40,
+          "sec": 0.887418333964888,
+          "tok_per_sec": 45.07457021006584
+        }
+      ]
+    },
+    {
+      "model": "HuggingFaceTB/SmolLM-135M",
+      "method": "RTN",
+      "bits": 4,
+      "ppl": 26.604963997757388,
+      "nll": 3.281097814834013,
+      "n_eval_tokens": 32736,
+      "calib_sec": 1.3335350840352476,
+      "eval_sec": 8.763783083006274,
+      "tok_per_sec": 41.991293868041424,
+      "samples": [
+        {
+          "prompt": "The capital of France is",
+          "completion": " Paris. It is the second largest city in the world. It is also the largest city in Europe. It is the second largest city in Europe. It is the second largest city in Europe. It",
+          "n_new_tokens": 40,
+          "sec": 1.0036592909600586,
+          "tok_per_sec": 39.85416202518055
+        },
+        {
+          "prompt": "Photosynthesis is the process by which",
+          "completion": " carbon dioxide is converted to organic compounds in the atmosphere. This process is essential to life on Earth because it is the basis for the production of carbohydrates, which are the building blocks of life. In this",
+          "n_new_tokens": 40,
+          "sec": 1.2762523340061307,
+          "tok_per_sec": 31.341764425566843
+        },
+        {
+          "prompt": "In a few sentences, the difference between machine learning and traditional programming is",
+          "completion": " that machine learning is a method of analyzing data to identify patterns that can be used to predict outcomes, while traditional programming is a method of developing programs that can be used to solve problems. Machine learning is",
+          "n_new_tokens": 40,
+          "sec": 1.1750642079859972,
+          "tok_per_sec": 34.04069303460281
+        },
+        {
+          "prompt": "Once upon a time in a small village,",
+          "completion": " there lived a curious little girl named Lily. She loved asking questions and learning new things every day! One sunny afternoon, she noticed something unusual happening in her village - some villagers were having trouble finding enough",
+          "n_new_tokens": 40,
+          "sec": 1.139080583001487,
+          "tok_per_sec": 35.11604060056898
+        },
+        {
+          "prompt": "Quantization in deep learning refers to",
+          "completion": " the process of reducing the size of training data while maintaining the accuracy of the model. This can be done through various techniques, such as pruning, pruning-gining, and pruning-gining-",
+          "n_new_tokens": 40,
+          "sec": 0.9855340830399655,
+          "tok_per_sec": 40.58713005299271
+        }
+      ]
+    },
+    {
+      "model": "HuggingFaceTB/SmolLM-135M",
+      "method": "AWQ-like",
+      "bits": 4,
+      "ppl": 23.8455397465148,
+      "nll": 3.1715971871205437,
+      "n_eval_tokens": 32736,
+      "calib_sec": 26.32801674999064,
+      "eval_sec": 8.93316799995955,
+      "tok_per_sec": 41.22861154209544,
+      "samples": [
+        {
+          "prompt": "The capital of France is",
+          "completion": " Paris. It is the largest city in the world. It is the capital of France. It is the largest city in the world. It is the capital of France. It is the largest city in",
+          "n_new_tokens": 40,
+          "sec": 1.0488964159740135,
+          "tok_per_sec": 38.13531955188891
+        },
+        {
+          "prompt": "Photosynthesis is the process by which",
+          "completion": " plants, animals, and other organisms use energy from the sun to make food. Photosynthesis is the process by which plants, animals, and other organisms use energy from the sun to make food. Photos",
+          "n_new_tokens": 40,
+          "sec": 0.9979880409664474,
+          "tok_per_sec": 40.0806406069397
+        },
+        {
+          "prompt": "In a few sentences, the difference between machine learning and traditional programming is",
+          "completion": " obvious. Machine learning is a branch of artificial intelligence that focuses on training computers to learn from data, without being explicitly programmed. On the other hand, traditional programming is a branch of computer science that focuses",
+          "n_new_tokens": 40,
+          "sec": 0.9647242500213906,
+          "tok_per_sec": 41.462625200012425
+        },
+        {
+          "prompt": "Once upon a time in a small village,",
+          "completion": " there lived a curious little girl named Lily. She loved exploring the world around her and asking questions about everything she saw. One day, while playing near the river, she noticed something unusual - a long",
+          "n_new_tokens": 40,
+          "sec": 1.0124985830043443,
+          "tok_per_sec": 39.506228128546795
+        },
+        {
+          "prompt": "Quantization in deep learning refers to",
+          "completion": " the process of reducing the number of parameters in a neural network while maintaining the overall complexity of the network. This can be done through techniques such as backpropagation through animation or pruning pruning pruning pruning pruning",
+          "n_new_tokens": 40,
+          "sec": 0.9685513750300743,
+          "tok_per_sec": 41.298790163565634
+        }
+      ]
+    },
+    {
+      "model": "HuggingFaceTB/SmolLM-135M",
+      "method": "TRIAD",
+      "bits": 4,
+      "ppl": 21.55606391574975,
+      "nll": 3.0706571651693664,
+      "n_eval_tokens": 32736,
+      "calib_sec": 213.15518258302473,
+      "eval_sec": 8.290765499987174,
+      "tok_per_sec": 38.0225115537478,
+      "samples": [
+        {
+          "prompt": "The capital of France is",
+          "completion": " Paris. The capital of the United Kingdom is London. The capital of Canada is Ottawa. The capital of the United States is Washington, D.C. The capital of the United Kingdom is London.",
+          "n_new_tokens": 40,
+          "sec": 0.9792101249913685,
+          "tok_per_sec": 40.84925081871737
+        },
+        {
+          "prompt": "Photosynthesis is the process by which",
+          "completion": " plants and other organisms convert the sun\u2019s energy into organic matter. This organic matter is then used to produce food and other organic matter. The process of photosynthesis is essential for life on Earth.\n",
+          "n_new_tokens": 40,
+          "sec": 1.0435587919782847,
+          "tok_per_sec": 38.33037516187431
+        },
+        {
+          "prompt": "In a few sentences, the difference between machine learning and traditional programming is",
+          "completion": " clear. Machine learning is a subset of artificial intelligence, which is a branch of computer science that focuses on developing algorithms that can automatically learn from data. It is a type of AI that enables machines to",
+          "n_new_tokens": 40,
+          "sec": 1.0461262919707224,
+          "tok_per_sec": 38.23630120666107
+        },
+        {
+          "prompt": "Once upon a time in a small village,",
+          "completion": " there lived a curious little girl named Lily. She was always full of questions and loved asking her grandma, Grandma, lots of questions! One sunny day, she asked Grandma, \"Why do we",
+          "n_new_tokens": 40,
+          "sec": 0.9914009580388665,
+          "tok_per_sec": 40.346945073692225
+        },
+        {
+          "prompt": "Quantization in deep learning refers to",
+          "completion": " the process of reducing the dimensionality of a dataset while retaining relevant information. This process is done by applying various techniques such as Principal Component Analysis (PCA) and Principal Component Analysis with Principal Components (",
+          "n_new_tokens": 40,
+          "sec": 0.9906877920147963,
+          "tok_per_sec": 40.37598961288359
+        }
+      ]
+    },
+    {
+      "model": "HuggingFaceTB/SmolLM-360M",
+      "method": "FP32",
+      "bits": 32,
+      "ppl": 14.070663545306283,
+      "nll": 2.644092030306133,
+      "n_eval_tokens": 32736,
+      "calib_sec": 0.0,
+      "eval_sec": 15.832710457965732,
+      "tok_per_sec": 31.72492375110413,
+      "samples": [
+        {
+          "prompt": "The capital of France is",
+          "completion": " Paris.\nThe capital of France is Paris.\nThe capital of France is Paris.\nThe capital of France is Paris.\nThe capital of France is Paris.\nThe capital of France is",
+          "n_new_tokens": 40,
+          "sec": 1.1919301659800112,
+          "tok_per_sec": 33.55901305435272
+        },
+        {
+          "prompt": "Photosynthesis is the process by which",
+          "completion": " plants use sunlight to convert carbon dioxide and water into glucose and oxygen. This process is essential for the survival of plants and is a key component of the food chain.\nPhotosynthesis is a complex process",
+          "n_new_tokens": 40,
+          "sec": 1.397510582988616,
+          "tok_per_sec": 28.622323499303214
+        },
+        {
+          "prompt": "In a few sentences, the difference between machine learning and traditional programming is",
+          "completion": " that machine learning is a subset of artificial intelligence.\nMachine learning is a subset of artificial intelligence.\nMachine learning is a subset of artificial intelligence.\nMachine learning is a subset of artificial intelligence.",
+          "n_new_tokens": 40,
+          "sec": 1.4042207500315271,
+          "tok_per_sec": 28.485549725071312
+        },
+        {
+          "prompt": "Once upon a time in a small village,",
+          "completion": " there lived two best friends named Sam and Alex. They loved exploring the world around them and learning new things every day. One sunny afternoon, they decided to go on an adventure to find out how the",
+          "n_new_tokens": 40,
+          "sec": 1.3407990410341881,
+          "tok_per_sec": 29.83295689796072
+        },
+        {
+          "prompt": "Quantization in deep learning refers to",
+          "completion": " the process of reducing the dimensionality of data by approximating high-dimensional data with lower-dimensional representations. This technique is widely used in various fields such as computer vision, natural language processing, and",
+          "n_new_tokens": 40,
+          "sec": 1.168659542046953,
+          "tok_per_sec": 34.22724802292585
+        }
+      ]
+    },
+    {
+      "model": "HuggingFaceTB/SmolLM-360M",
+      "method": "RTN",
+      "bits": 4,
+      "ppl": 17.290327156119417,
+      "nll": 2.8501472212119303,
+      "n_eval_tokens": 32736,
+      "calib_sec": 3.6771698750089854,
+      "eval_sec": 16.33727000001818,
+      "tok_per_sec": 32.02641378456468,
+      "samples": [
+        {
+          "prompt": "The capital of France is",
+          "completion": " Paris.\nParis is the capital of France.\nParis is the capital of France.\nParis is the capital of France.\nParis is the capital of France.\nParis is the capital of",
+          "n_new_tokens": 40,
+          "sec": 1.078195041976869,
+          "tok_per_sec": 37.0990390817046
+        },
+        {
+          "prompt": "Photosynthesis is the process by which",
+          "completion": " green plants and other\nphotosynthetic organisms incorporate carbon dioxide from the air and water into\nCarbohydrates are the basic building blocks of all living organisms.\nCarbohydrates are the basic building blocks of all",
+          "n_new_tokens": 40,
+          "sec": 1.3932156250230037,
+          "tok_per_sec": 28.710559429262467
+        },
+        {
+          "prompt": "In a few sentences, the difference between machine learning and traditional programming is",
+          "completion": " that machine learning is a subset of AI.\nThe goal of machine learning is to create algorithms that can automatically learn from data and improve their performance over time.\nThe goal of traditional programming is to",
+          "n_new_tokens": 40,
+          "sec": 1.3252924580010585,
+          "tok_per_sec": 30.182017379267432
+        },
+        {
+          "prompt": "Once upon a time in a small village,",
+          "completion": " there lived two best friends named Sam and Alex. They were known throughout the land for their curiosity and love of learning. One day they heard about a magical place called \"The University of Virginia,\" where",
+          "n_new_tokens": 40,
+          "sec": 1.2479906670050696,
+          "tok_per_sec": 32.05152174414259
+        },
+        {
+          "prompt": "Quantization in deep learning refers to",
+          "completion": " the process of reducing the dimensionality of the input data. This is achieved by applying a set of filters to the input data, which helps to extract features and improve the performance of the model.\n",
+          "n_new_tokens": 40,
+          "sec": 1.0861074170097709,
+          "tok_per_sec": 36.82876976397644
+        }
+      ]
+    },
+    {
+      "model": "HuggingFaceTB/SmolLM-360M",
+      "method": "AWQ-like",
+      "bits": 4,
+      "ppl": 16.6044258675111,
+      "nll": 2.80966927835086,
+      "n_eval_tokens": 32736,
+      "calib_sec": 54.08501466596499,
+      "eval_sec": 16.753181499952916,
+      "tok_per_sec": 31.977546438353567,
+      "samples": [
+        {
+          "prompt": "The capital of France is",
+          "completion": " Paris.\nThe capital of France is Paris.\nThe capital of France is Paris.\nThe capital of France is Paris.\nThe capital of France is Paris.\nThe capital of France is",
+          "n_new_tokens": 40,
+          "sec": 1.1460370409768075,
+          "tok_per_sec": 34.902885831601566
+        },
+        {
+          "prompt": "Photosynthesis is the process by which",
+          "completion": " plants make food.\nThe process of photosynthesis is the conversion of light energy into chemical energy.\nThe process of photosynthesis is the conversion of light energy into chemical energy.\nThe process of photosynthesis is",
+          "n_new_tokens": 40,
+          "sec": 1.053054542047903,
+          "tok_per_sec": 37.98473716490596
+        },
+        {
+          "prompt": "In a few sentences, the difference between machine learning and traditional programming is",
+          "completion": " that machine learning is a subset of AI.\nThe goal of machine learning is to create software that can learn from experience.\nThe goal of AI is to create software that can perform tasks that humans",
+          "n_new_tokens": 40,
+          "sec": 1.0758180830162019,
+          "tok_per_sec": 37.18100730176851
+        },
+        {
+          "prompt": "Once upon a time in a small village,",
+          "completion": " there lived a kind and curious little girl named Lily. She was always eager to learn new things and explore the world around her. One day, while playing near the river, she met a wise old",
+          "n_new_tokens": 40,
+          "sec": 2.0781037090346217,
+          "tok_per_sec": 19.248317505088284
+        },
+        {
+          "prompt": "Quantization in deep learning refers to",
+          "completion": " the process of converting continuous data into discrete form. This is achieved by dividing the data into smaller intervals or bins. In the context of deep learning, quantization is used to reduce the computational complexity of",
+          "n_new_tokens": 40,
+          "sec": 1.0594460829743184,
+          "tok_per_sec": 37.75557873384447
+        }
+      ]
+    }
+  ]
+}

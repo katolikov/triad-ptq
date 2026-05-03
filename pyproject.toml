@@ -26,6 +26,7 @@ dependencies = [
     "pillow>=10.4",
     "sentencepiece>=0.2",
     "protobuf>=4.25",
+    "tabulate>=0.10.0",
 ]
 
 [project.optional-dependencies]
