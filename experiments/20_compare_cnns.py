@@ -52,6 +52,17 @@ def load_model(tag: str) -> nn.Module:
     raise ValueError(tag)
 
 
+def make_transform(tag: str):
+    """Per-model preprocessing. Some timm models need their own transform."""
+    from triad_ptq.eval.vision import imagenet_default_transform
+    if tag == "mobilevit_s":
+        import timm
+        m = timm.create_model("mobilevit_s", pretrained=True)
+        cfg = timm.data.resolve_model_data_config(m)
+        return timm.data.create_transform(**cfg, is_training=False)
+    return imagenet_default_transform()
+
+
 def _vision_forward(model, batch, device):
     if isinstance(batch, dict):
         x = batch["pixel_values"]
@@ -94,22 +105,17 @@ def main():
         results = {"runs": []}
     done_keys = {(r["model"], r["method"], r["bits"]) for r in results["runs"]}
 
-    transform = imagenet_default_transform()
-    eval_ds = HFImageNetV2(transform=transform, max_n=args.n_eval)
-    eval_loader = DataLoader(eval_ds, batch_size=args.batch, num_workers=0)
-    console.log(f"eval set: {len(eval_ds)} images")
-
-    calib_batches = build_imagenet_calibration(transform=transform, n=args.n_calib,
-                                                batch_size=16)
-    console.log(f"calib: {len(calib_batches)} batches of 16")
-
-    # Sample images for qualitative comparison (10 per model)
-    sample_xs = [eval_ds[i] for i in range(10)]
-    sample_x_stack = torch.stack([x for x, _ in sample_xs]).to(dev)
-    sample_y = [y for _, y in sample_xs]
-
     for tag in args.models:
         console.log(f"\n=== {tag} ===")
+        # Per-model transform & dataset (necessary for timm models with
+        # non-standard preprocessing like MobileViT-S).
+        transform = make_transform(tag)
+        eval_ds = HFImageNetV2(transform=transform, max_n=args.n_eval)
+        eval_loader = DataLoader(eval_ds, batch_size=args.batch, num_workers=0)
+        calib_batches = build_imagenet_calibration(transform=transform, n=args.n_calib, batch_size=16)
+        sample_xs = [eval_ds[i] for i in range(10)]
+        sample_x_stack = torch.stack([x for x, _ in sample_xs]).to(dev)
+        sample_y = [y for _, y in sample_xs]
         per_model_samples: dict = {"model": tag, "labels": sample_y, "predictions": {}}
         for method in args.methods:
             bits = 32 if method == "FP32" else args.bits

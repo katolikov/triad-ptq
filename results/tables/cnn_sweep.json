@@ -1,0 +1,124 @@
+{
+  "runs": [
+    {
+      "model": "mobilenet_v2",
+      "method": "FP32",
+      "bits": 32,
+      "top1": 0.5996,
+      "top5": 0.8232,
+      "n_eval": 5000,
+      "calib_sec": 0.34160958300344646,
+      "eval_sec": 58.06763766700169
+    },
+    {
+      "model": "mobilenet_v2",
+      "method": "RTN",
+      "bits": 4,
+      "top1": 0.4004,
+      "top5": 0.6552,
+      "n_eval": 5000,
+      "calib_sec": 0.6161740000243299,
+      "eval_sec": 71.56348504096968
+    },
+    {
+      "model": "mobilenet_v2",
+      "method": "AWQ-like",
+      "bits": 4,
+      "top1": 0.5016,
+      "top5": 0.7486,
+      "n_eval": 5000,
+      "calib_sec": 6.591231082973536,
+      "eval_sec": 53.369964083016384
+    },
+    {
+      "model": "mobilenet_v2",
+      "method": "TRIAD",
+      "bits": 4,
+      "top1": 0.569,
+      "top5": 0.8026,
+      "n_eval": 5000,
+      "calib_sec": 22.93418624997139,
+      "eval_sec": 40.307775583991315
+    },
+    {
+      "model": "efficientnet_b0",
+      "method": "FP32",
+      "bits": 32,
+      "top1": 0.6568,
+      "top5": 0.8626,
+      "n_eval": 5000,
+      "calib_sec": 0.24805645900778472,
+      "eval_sec": 42.03191716701258
+    },
+    {
+      "model": "efficientnet_b0",
+      "method": "RTN",
+      "bits": 4,
+      "top1": 0.6076,
+      "top5": 0.8312,
+      "n_eval": 5000,
+      "calib_sec": 0.7955265829805285,
+      "eval_sec": 49.20777158404235
+    },
+    {
+      "model": "efficientnet_b0",
+      "method": "AWQ-like",
+      "bits": 4,
+      "top1": 0.6208,
+      "top5": 0.835,
+      "n_eval": 5000,
+      "calib_sec": 5.24127524998039,
+      "eval_sec": 50.83400791598251
+    },
+    {
+      "model": "efficientnet_b0",
+      "method": "TRIAD",
+      "bits": 4,
+      "top1": 0.6426,
+      "top5": 0.8556,
+      "n_eval": 5000,
+      "calib_sec": 23.590810124995187,
+      "eval_sec": 57.984180958010256
+    },
+    {
+      "model": "mobilevit_s",
+      "method": "FP32",
+      "bits": 32,
+      "top1": 0.6686,
+      "top5": 0.8744,
+      "n_eval": 5000,
+      "calib_sec": 0.3540520830429159,
+      "eval_sec": 72.64690925000468
+    },
+    {
+      "model": "mobilevit_s",
+      "method": "RTN",
+      "bits": 4,
+      "top1": 0.3398,
+      "top5": 0.579,
+      "n_eval": 5000,
+      "calib_sec": 1.870999666978605,
+      "eval_sec": 163.7130383340409
+    },
+    {
+      "model": "mobilevit_s",
+      "method": "AWQ-like",
+      "bits": 4,
+      "top1": 0.446,
+      "top5": 0.6702,
+      "n_eval": 5000,
+      "calib_sec": 11.206599291996099,
+      "eval_sec": 174.6965644999873
+    },
+    {
+      "model": "mobilevit_s",
+      "method": "TRIAD",
+      "bits": 4,
+      "top1": 0.6264,
+      "top5": 0.8366,
+      "n_eval": 5000,
+      "calib_sec": 97.97644670802401,
+      "eval_sec": 117.94047024997417
+    }
+  ]
+}

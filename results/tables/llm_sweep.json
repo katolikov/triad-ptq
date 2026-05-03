@@ -335,6 +335,156 @@
           "tok_per_sec": 37.75557873384447
         }
       ]
+    },
+    {
+      "model": "HuggingFaceTB/SmolLM-360M",
+      "method": "TRIAD",
+      "bits": 4,
+      "ppl": 15.790869025927858,
+      "nll": 2.7594318632273147,
+      "n_eval_tokens": 32736,
+      "calib_sec": 842.5647067080135,
+      "eval_sec": 20.633117208024487,
+      "tok_per_sec": 29.348437749812337,
+      "samples": [
+        {
+          "prompt": "The capital of France is",
+          "completion": " Paris.\nParis is the capital of France.\nParis is the capital of France.\nParis is the capital of France.\nParis is the capital of France.\nParis is the capital of",
+          "n_new_tokens": 40,
+          "sec": 1.21752300002845,
+          "tok_per_sec": 32.85358880207217
+        },
+        {
+          "prompt": "Photosynthesis is the process by which",
+          "completion": " plants make food. It is the process by which plants use the energy from the sun to make food. It is the process by which plants make food.\nWhat is the process of photosynthesis?\n",
+          "n_new_tokens": 40,
+          "sec": 2.118587458971888,
+          "tok_per_sec": 18.88050447509553
+        },
+        {
+          "prompt": "In a few sentences, the difference between machine learning and traditional programming is",
+          "completion": " that machine learning is a type of artificial intelligence that allows computers to learn from data and make predictions or decisions without being explicitly programmed.\nMachine learning algorithms can be used for a wide range of applications,",
+          "n_new_tokens": 40,
+          "sec": 1.7689893749775365,
+          "tok_per_sec": 22.61178080875016
+        },
+        {
+          "prompt": "Once upon a time in a small village,",
+          "completion": " there lived two best friends named Sam and Alex. They were curious kids who loved learning about the world around them. One day, they discovered the fascinating concept of the \"Internet of Things,\" or IoT",
+          "n_new_tokens": 40,
+          "sec": 1.626777665980626,
+          "tok_per_sec": 24.588486082938626
+        },
+        {
+          "prompt": "Quantization in deep learning refers to",
+          "completion": " the process of reducing the dimensionality of a dataset by compressing the information into a lower-dimensional space. This is achieved by replacing continuous data with discrete data, which can be represented as a set",
+          "n_new_tokens": 40,
+          "sec": 1.129315292055253,
+          "tok_per_sec": 35.419692163384745
+        }
+      ]
+    },
+    {
+      "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "method": "FP32",
+      "bits": 32,
+      "ppl": 8.447840082941072,
+      "nll": 2.133910797208635,
+      "n_eval_tokens": 16368,
+      "calib_sec": 0.0,
+      "eval_sec": 16.01373354200041,
+      "tok_per_sec": 20.328758370467064,
+      "samples": [
+        {
+          "prompt": "The capital of France is",
+          "completion": "Paris.\n\n2. B. The capital of Germany is Berlin.\n\n3. C. The capital of the United States is Washington, D.C.\n\n4. A.",
+          "n_new_tokens": 40,
+          "sec": 1.8808133749989793,
+          "tok_per_sec": 21.267394485655288
+        },
+        {
+          "prompt": "Photosynthesis is the process by which",
+          "completion": "plants and other organisms convert light energy into chemical energy in the form of glucose. This process is called photosynthesis. The process involves the following stages:\n\n1. Light Energy",
+          "n_new_tokens": 40,
+          "sec": 2.549614083021879,
+          "tok_per_sec": 15.688648829783212
+        },
+        {
+          "prompt": "In a few sentences, the difference between machine learning and traditional programming is",
+          "completion": "that machine learning is a subset of programming that focuses on learning from data, while traditional programming is a subset of programming that focuses on writing code. Machine learning is a subset of programming that focus",
+          "n_new_tokens": 40,
+          "sec": 2.6018564160331152,
+          "tok_per_sec": 15.373638511915063
+        },
+        {
+          "prompt": "Once upon a time in a small village,",
+          "completion": "there lived a young girl named Lily. She was a kind and gentle soul, always looking for ways to help others. One day, Lily met a young man named Jack. Jack was a",
+          "n_new_tokens": 40,
+          "sec": 2.123686083999928,
+          "tok_per_sec": 18.8351754533611
+        },
+        {
+          "prompt": "Quantization in deep learning refers to",
+          "completion": "the process of converting the input data into a fixed-size vector, which is then used to train the neural network. This process is essential for training deep neural networks, as it allows the network to",
+          "n_new_tokens": 40,
+          "sec": 2.679888916958589,
+          "tok_per_sec": 14.92599180021091
+        }
+      ]
+    },
+    {
+      "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "method": "RTN",
+      "bits": 4,
+      "ppl": 8.867101357180447,
+      "nll": 2.1823479511637607,
+      "n_eval_tokens": 16368,
+      "calib_sec": 6.397178499959409,
+      "eval_sec": 16.80479841597844,
+      "tok_per_sec": 20.185201734247734,
+      "samples": [
+        {
+          "prompt": "The capital of France is",
+          "completion": "Paris. The capital of France is Paris.\n\nBased on the text material above, generate the response to the following quesion or instruction: Can you summarize the capital of France according",
+          "n_new_tokens": 40,
+          "sec": 1.675178708974272,
+          "tok_per_sec": 23.87804941986899
+        },
+        {
+          "prompt": "Photosynthesis is the process by which",
+          "completion": "plants and other photosynthetic organisms convert light energy into chemical energy in the form of glucose. The process is carried out by the chloroplasts in the leaves of plants",
+          "n_new_tokens": 40,
+          "sec": 2.0567197499913163,
+          "tok_per_sec": 19.448444543875695
+        },
+        {
+          "prompt": "In a few sentences, the difference between machine learning and traditional programming is",
+          "completion": "that machine learning is a subset of artificial intelligence, which is a branch of computer science that deals with the design, development, and application of intelligent systems. Traditional programming, on the other",
+          "n_new_tokens": 40,
+          "sec": 2.076869332988281,
+          "tok_per_sec": 19.25975763840975
+        },
+        {
+          "prompt": "Once upon a time in a small village,",
+          "completion": "there lived a young girl named Lily. She was a kind and loving girl who always tried to make others happy. One day, Lily met a handsome prince named Jack. Jack was",
+          "n_new_tokens": 40,
+          "sec": 1.9619319590274245,
+          "tok_per_sec": 20.388066882721528
+        },
+        {
+          "prompt": "Quantization in deep learning refers to",
+          "completion": "the process of reducing the size of the input data to a fixed-size vector, which is then used to train a neural network. This process is commonly used in convolutional neural networks (CNN",
+          "n_new_tokens": 40,
+          "sec": 2.246622540988028,
+          "tok_per_sec": 17.804503992205408
+        }
+      ]
+    },
+    {
+      "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "method": "AWQ-like",
+      "bits": 4,
+      "error": "_quantize(m, calib, bits=bits, group_size=64,\n  File \"/Users/artemkatolikov/DEV/Triad-ML/triad_ptq/baselines/awq.py\", line 90, in awq_like_quantize\n    qw = quantize_grouped(W_scaled, bits=bits, group_size=group_size)\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/artemkatolikov/DEV/Triad-ML/triad_ptq/core/quantize.py\", line 78, in quantize_grouped\n    q, scale, zero = _quantize_group(Wg, bits)  # (m, n_g, g), (m, n_g)\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/artemkatolikov/DEV/Triad-ML/triad_ptq/core/quantize.py\", line 56, in _quantize_group\n    q = ((W_g / scale) + zero).round().clamp(0, qmax)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: MPS backend out of memory (MPS allocated: 19.52 GiB, other allocations: 172.39 MiB, max allowed: 20.13 GiB). Tried to allocate 250.00 MiB on private pool. Use PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 to disable upper limit for memory allocations (may cause system failure).\n"
     }
   ]
 }
