@@ -1,0 +1,337 @@
+=== Device profile summary (written 2026-05-05) ===
+
+DEVICE: Samsung Galaxy Z Flip7 (SM-F766B / b7s)
+SoC:    Exynos 2500 (s5e9955) — IN-SCOPE per session prompt (2400/2500 supported)
+GPU:    Samsung Xclipse 950 (AMD RDNA-based, kernel driver "sgpu")
+        NOT Mali. Vulkan loader is /vendor/lib64/hw/vulkan.samsung.so.
+        Exposes VK_AMD_* extensions, VK_SEC_amigo_profiling, VK_SECX_properties.
+NPU:    Exynos NN ("ENN") — driver libs present at
+        /vendor/lib64/libenn_user_driver_gpu.so etc. (libenn_*).
+RAM:    11.5 GiB total (MemTotal 11485208 kB)
+OS:     Android 16, SDK 36, arm64-v8a, OpenGL ES version 196610 (3.2)
+ADB:    R5CY71BJJ9D, USB
+
+=> The plan repeatedly says "Mali (Bifrost/Valhall)". This device is
+   AMD-Xclipse instead. See docs/decisions/002-exynos-2500-xclipse-gpu.md
+   for the divergence rationale and adjusted choices.
+=> The Phase-6 (NPU) plan invokes "exynos_nn_compile" as a userland
+   binary; this device exposes ENN as a service/library only, not as
+   a CLI on a non-rooted retail build. Phase 6 is therefore deferred
+   absent further info.
+
+=== Raw output below ===
+
+=== Device profile (captured 2026-05-05 01:29:44 IDT) ===
+
+## Identification
+ro.product.model: SM-F766B
+ro.product.brand: samsung
+ro.product.device: b7s
+ro.soc.model: s5e9955
+ro.soc.manufacturer: Samsung
+ro.boot.hardware.platform: 
+ro.hardware: s5e9955
+ro.build.version.release: 16
+ro.build.version.sdk: 36
+ro.product.cpu.abi: arm64-v8a
+ro.opengles.version: 196610
+
+## /proc/meminfo (head)
+MemTotal:       11485208 kB
+MemFree:         7086168 kB
+MemAvailable:    8125524 kB
+Buffers:            1964 kB
+Cached:          1152424 kB
+
+
+## SurfaceFlinger renderer info
+    GPU missed frame count: 111
+    GPU frame count: 16943
+    GPU missed frame count: 1
+    GPU frame count: 62
+ ------------RE Vulkan (Ganesh)----------
+Vulkan device initialized: 1
+Vulkan protected device initialized: 1
+ VK_KHR_incremental_present, VK_EXT_hdr_metadata, VK_KHR_shared_presentable_image, VK_EXT_swapchain_maintenance1, VK_KHR_swapchain_mutable_format, VK_KHR_16bit_storage, VK_KHR_8bit_storage, VK_KHR_acceleration_structure, VK_KHR_bind_memory2, VK_KHR_buffer_device_address, VK_KHR_copy_commands2, VK_KHR_create_renderpass2, VK_KHR_dedicated_allocation, VK_KHR_deferred_host_operations, VK_KHR_depth_stencil_resolve, VK_KHR_descriptor_update_template, VK_KHR_device_group, VK_KHR_draw_indirect_count, VK_KHR_driver_properties, VK_KHR_dynamic_rendering, VK_KHR_dynamic_rendering_local_read, VK_KHR_external_fence, VK_KHR_external_fence_fd, VK_KHR_external_memory, VK_KHR_external_memory_fd, VK_KHR_external_semaphore, VK_KHR_external_semaphore_fd, VK_KHR_format_feature_flags2, VK_KHR_fragment_shader_barycentric, VK_KHR_fragment_shading_rate, VK_KHR_get_memory_requirements2, VK_KHR_global_priority, VK_KHR_imageless_framebuffer, VK_KHR_image_format_list, VK_KHR_index_type_uint8, VK_KHR_line_rasterization, VK_KHR_load_store_op_none, VK_KHR_maintenance1, VK_KHR_maintenance2, VK_KHR_maintenance3, VK_KHR_maintenance4, VK_KHR_maintenance5, VK_KHR_map_memory2, VK_KHR_multiview, VK_KHR_pipeline_executable_properties, VK_KHR_pipeline_library, VK_KHR_push_descriptor, VK_KHR_ray_query, VK_KHR_ray_tracing_maintenance1, VK_KHR_ray_tracing_pipeline, VK_KHR_relaxed_block_layout, VK_KHR_sampler_mirror_clamp_to_edge, VK_KHR_sampler_ycbcr_conversion, VK_KHR_separate_depth_stencil_layouts, VK_KHR_shader_atomic_int64, VK_KHR_shader_clock, VK_KHR_shader_draw_parameters, VK_KHR_shader_expect_assume, VK_KHR_shader_float16_int8, VK_KHR_shader_float_controls, VK_KHR_shader_float_controls2, VK_KHR_shader_integer_dot_product, VK_KHR_shader_maximal_reconvergence, VK_KHR_shader_non_semantic_info, VK_KHR_shader_quad_control, VK_KHR_shader_subgroup_extended_types, VK_KHR_shader_subgroup_rotate, VK_KHR_shader_subgroup_uniform_control_flow, VK_KHR_shader_terminate_invocation, VK_KHR_spirv_1_4, VK_KHR_storage_buffer_storage_class, VK_KHR_synchronization2, VK_KHR_timeline_semaphore, VK_KHR_uniform_buffer_standard_layout, VK_KHR_variable_pointers, VK_KHR_vertex_attribute_divisor, VK_KHR_vulkan_memory_model, VK_KHR_workgroup_memory_explicit_layout, VK_KHR_zero_initialize_workgroup_memory, VK_EXT_4444_formats, VK_EXT_attachment_feedback_loop_layout, VK_EXT_border_color_swizzle, VK_EXT_buffer_device_address, VK_EXT_calibrated_timestamps, VK_EXT_color_write_enable, VK_EXT_conditional_rendering, VK_EXT_conservative_rasterization, VK_EXT_custom_border_color, VK_EXT_depth_clamp_zero_one, VK_EXT_depth_clip_control, VK_EXT_depth_clip_enable, VK_EXT_depth_range_unrestricted, VK_EXT_descriptor_buffer, VK_EXT_descriptor_indexing, VK_EXT_device_address_binding_report, VK_EXT_device_fault, VK_EXT_device_memory_report, VK_EXT_extended_dynamic_state, VK_EXT_extended_dynamic_state2, VK_EXT_extended_dynamic_state3, VK_EXT_external_memory_acquire_unmodified, VK_EXT_external_memory_dma_buf, VK_EXT_external_memory_host, VK_EXT_frame_boundary, VK_EXT_global_priority, VK_EXT_global_priority_query, VK_EXT_graphics_pipeline_library, VK_EXT_host_query_reset, VK_EXT_image_2d_view_of_3d, VK_EXT_image_drm_format_modifier, VK_EXT_image_robustness, VK_EXT_image_view_min_lod, VK_EXT_index_type_uint8, VK_EXT_inline_uniform_block, VK_EXT_line_rasterization, VK_EXT_load_store_op_none, VK_EXT_memory_budget, VK_EXT_non_seamless_cube_map, VK_EXT_physical_device_drm, VK_EXT_pipeline_creation_cache_control, VK_EXT_pipeline_creation_feedback, VK_EXT_post_depth_coverage, VK_EXT_primitive_topology_list_restart, VK_EXT_private_data, VK_EXT_provoking_vertex, VK_EXT_queue_family_foreign, VK_EXT_robustness2, VK_EXT_sample_locations, VK_EXT_scalar_block_layout, VK_EXT_separate_stencil_usage, VK_EXT_shader_atomic_float, VK_EXT_shader_demote_to_helper_invocation, VK_EXT_shader_image_atomic_int64, VK_EXT_shader_module_identifier, VK_EXT_shader_stencil_export, VK_EXT_shader_subgroup_ballot, VK_EXT_shader_subgroup_vote, VK_EXT_shader_viewport_index_layer, VK_EXT_subgroup_size_control, VK_EXT_texel_buffer_alignment, VK_EXT_texture_compression_astc_hdr, VK_EXT_tooling_info, VK_EXT_transform_feedback, VK_EXT_vertex_attribute_divisor, VK_EXT_vertex_input_dynamic_state, VK_EXT_ycbcr_image_arrays, VK_AMD_buffer_marker, VK_AMD_draw_indirect_count, VK_AMD_gcn_shader, VK_AMD_gpu_shader_half_float, VK_AMD_gpu_shader_int16, VK_AMD_memory_overallocation_behavior, VK_AMD_mixed_attachment_samples, VK_AMD_shader_ballot, VK_AMD_shader_core_properties, VK_AMD_shader_core_properties2, VK_AMD_shader_early_and_late_fragment_tests, VK_AMD_shader_explicit_vertex_parameter, VK_AMD_shader_fragment_mask, VK_AMD_shader_image_load_store_lod, VK_AMD_shader_info, VK_AMD_shader_trinary_minmax, VK_ANDROID_external_memory_android_hardware_buffer, VK_KHR_swapchain, VK_ANDROID_external_format_resolve, VK_GOOGLE_decorate_string, VK_GOOGLE_hlsl_functionality1, VK_SEC_amigo_profiling, VK_SECX_properties
+	Total GPU memory: 11.03MB
+Skia's GPU Caches:  24590540 bytes, 23.45 MB (12.08 MB is purgeable)
+    skia/gpu_resources/resource_156237: size[32.00 KB] type[Buffer Object] desc[          	           Vertex	    32768 bytes (0.03 MB)] purgeable_size[32.00 KB] label[MakeVkBuffer] category[Scratch]
+    skia/gpu_resources/resource_466414: size[256.00 bytes] type[Buffer Object] desc[          	          Uniform	      256 bytes (0.25 KB)] purgeable_size[256.00 bytes] label[MakeVkBuffer] category[Scratch]
+    skia/gpu_resources/resource_484908: size[384.00 bytes] type[Buffer Object] desc[          	          Uniform	      384 bytes (0.38 KB)] purgeable_size[384.00 bytes] label[MakeVkBuffer] category[Scratch]
+    skia/gpu_resources/resource_461662: size[128.00 bytes] type[Buffer Object] desc[          	          Uniform	      128 bytes (0.12 KB)] purgeable_size[128.00 bytes] label[MakeVkBuffer] category[Scratch]
+    skia/gpu_resources/resource_461663: size[128.00 bytes] type[Buffer Object] desc[          	          Uniform	      128 bytes (0.12 KB)] purgeable_size[128.00 bytes] label[MakeVkBuffer] category[Scratch]
+    skia/gpu_resources/resource_461982: size[384.00 bytes] type[Buffer Object] desc[          	          Uniform	      384 bytes (0.38 KB)] purgeable_size[384.00 bytes] label[MakeVkBuffer] category[Scratch]
+    skia/gpu_resources/resource_484911: size[384.00 bytes] type[Buffer Object] desc[          	          Uniform	      384 bytes (0.38 KB)] purgeable_size[384.00 bytes] label[MakeVkBuffer] category[Scratch]
+    skia/gpu_resources/resource_461983: size[128.00 bytes] type[Buffer Object] desc[          	          Uniform	      128 bytes (0.12 KB)] purgeable_size[128.00 bytes] label[MakeVkBuffer] category[Scratch]
+    skia/gpu_resources/resource_461643: size[128.00 bytes] type[Buffer Object] desc[          	          Uniform	      128 bytes (0.12 KB)] purgeable_size[128.00 bytes] label[MakeVkBuffer] category[Scratch]
+    skia/gpu_resources/resource_466422: size[64.00 KB] type[Buffer Object] desc[          	     XferCpuToGpu	    65536 bytes (0.06 MB)] purgeable_size[64.00 KB] label[MakeVkBuffer] category[Scratch]
+
+## Vulkan / Mali libs
+libExynosC2Av1Dec.so
+libExynosC2ComponentRM.so
+libExynosC2ComponentStore.so
+libExynosC2H264Dec.so
+libExynosC2H264Enc.so
+libExynosC2HevcDec.so
+libExynosC2HevcEnc.so
+libExynosC2MVHevcDec.so
+libExynosC2MVHevcEnc.so
+libExynosC2Vp8Dec.so
+libExynosC2Vp8Enc.so
+libExynosC2Vp9Dec.so
+libExynosC2Vp9Enc.so
+libExynosCV.so
+libExynosHWCService.so
+libexynos_logger.so
+libexynos_profiler.so
+libexynos_sensor_interface.so
+libexynosdisplay.so
+libexynosgdc.so
+libexynosgraphicbuffer.so
+libexynosgraphicbuffer_core.so
+libexynosscaler.so
+libexynosutils.so
+libexynosv4l2.so
+libion_exynos.so
+
+## Samsung NN / Exynos AI packages
+package:com.samsung.android.app.vex.scanner
+package:com.samsung.android.ConnectivityUxOverlay
+package:com.samsung.android.oneconnect
+package:com.samsung.android.knox.knnr
+package:com.samsung.android.ConnectivityOverlay
+
+## All AI/ML related packages
+package:com.samsung.android.aircommandmanager
+package:com.samsung.android.wifi.ai
+package:com.samsung.android.aicore
+package:com.google.android.apps.aiwallpapers
+package:com.samsung.android.mhs.ai
+package:com.google.android.aicore
+
+## CPU info
+processor	: 0
+BogoMIPS	: 51.20
+Features	: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 sm3 sm4 asimddp sha512 sve asimdfhm dit uscat ilrcpc flagm sb paca pacg dcpodp sve2 sveaes svepmull svebitperm svesha3 svesm4 flagm2 frint svei8mm svebf16 i8mm bf16 dgh bti ecv afp wfxt
+CPU implementer	: 0x41
+CPU architecture: 8
+CPU variant	: 0x0
+CPU part	: 0xd80
+CPU revision	: 1
+
+processor	: 1
+BogoMIPS	: 51.20
+Features	: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 sm3 sm4 asimddp sha512 sve asimdfhm dit uscat ilrcpc flagm sb paca pacg dcpodp sve2 sveaes svepmull svebitperm svesha3 svesm4 flagm2 frint svei8mm svebf16 i8mm bf16 dgh bti ecv afp wfxt
+CPU implementer	: 0x41
+CPU architecture: 8
+CPU variant	: 0x0
+CPU part	: 0xd80
+CPU revision	: 1
+
+processor	: 2
+BogoMIPS	: 51.20
+
+## GPU detection
+--- /vendor/lib64/hw entries ---
+gralloc.default.so
+vulkan.samsung.so
+
+--- mali driver presence ---
+cat: /sys/class/misc/mali0/device/gpuinfo: No such file or directory
+
+--- Vulkan libs (anywhere) ---
+/system/lib64/libvulkan.so
+
+--- dumpsys SurfaceFlinger first 80 lines ---
+Build configuration:mDfsValue: 0.000000
+ [sf PRESENT_TIME_OFFSET=0 FORCE_HWC_FOR_RBG_TO_YUV=0 MAX_VIRT_DISPLAY_DIM=0 RUNNING_WITHOUT_SYNC_FRAMEWORK=0 NUM_FRAMEBUFFER_SURFACE_BUFFERS=3]
+
+Display identification data:
+Display 4633128672291735937 (HWC display 0): port=129 pnpId=SAM displayName="samsung lcd  "
+Display 4633128672291735938 (HWC display 1): port=130 pnpId=SAM displayName="samsung lcd  "
+
+Wide-Color information:
+Device supports wide color: 1
+DisplayColorSetting: Managed
+DisplayRenderIntent: 256
+Display 4633128672291735937 color modes:
+    ColorMode::SRGB (7)
+    ColorMode::DISPLAY_P3 (9)
+    ColorMode::NATIVE (0)
+    Current color mode: ColorMode::DISPLAY_P3 (9)
+Display 4633128672291735938 color modes:
+    ColorMode::SRGB (7)
+    ColorMode::DISPLAY_P3 (9)
+    ColorMode::NATIVE (0)
+    Current color mode: ColorMode::DISPLAY_P3 (9)
+
+HDR events for display 4633128672291735938
+11879889843: numHdrLayers(0), size(0x0), flags(0), desiredRatio(0.00)
+52611011757: numHdrLayers(1), size(1048x948), flags(0), desiredRatio(4.93)
+54100704100: numHdrLayers(0), size(0x0), flags(0), desiredRatio(0.00)
+
+HDR events for display 4633128672291735937
+126942472499: numHdrLayers(1), size(742x2520), flags(0), desiredRatio(1.03)
+126950828827: numHdrLayers(1), size(740x2520), flags(0), desiredRatio(1.03)
+126958955233: numHdrLayers(1), size(738x2520), flags(0), desiredRatio(1.03)
+126967392890: numHdrLayers(1), size(736x2520), flags(0), desiredRatio(1.03)
+126975938671: numHdrLayers(1), size(735x2520), flags(0), desiredRatio(1.03)
+126984047694: numHdrLayers(1), size(733x2520), flags(0), desiredRatio(1.03)
+126992474140: numHdrLayers(1), size(732x2520), flags(0), desiredRatio(1.03)
+127000581171: numHdrLayers(1), size(730x2520), flags(0), desiredRatio(1.03)
+127008966483: numHdrLayers(1), size(729x2520), flags(0), desiredRatio(1.03)
+127017324335: numHdrLayers(1), size(728x2520), flags(0), desiredRatio(1.03)
+127025594452: numHdrLayers(1), size(727x2520), flags(0), desiredRatio(1.03)
+127033863436: numHdrLayers(1), size(726x2520), flags(0), desiredRatio(1.03)
+127042231327: numHdrLayers(1), size(725x2520), flags(0), desiredRatio(1.03)
+127050574335: numHdrLayers(1), size(724x2520), flags(0), desiredRatio(1.03)
+127067241952: numHdrLayers(1), size(723x2520), flags(0), desiredRatio(1.03)
+127075615546: numHdrLayers(1), size(722x2520), flags(0), desiredRatio(1.03)
+127100608905: numHdrLayers(1), size(721x2520), flags(0), desiredRatio(1.03)
+127125549804: numHdrLayers(1), size(720x2520), flags(0), desiredRatio(1.03)
+127150634843: numHdrLayers(0), size(0x0), flags(0), desiredRatio(0.00)
+128910474491: numHdrLayers(1), size(730x2520), flags(0), desiredRatio(1.03)
+128916132343: numHdrLayers(1), size(867x2520), flags(0), desiredRatio(1.03)
+128941158632: numHdrLayers(1), size(915x2520), flags(0), desiredRatio(1.03)
+129105388202: numHdrLayers(1), size(934x2520), flags(0), desiredRatio(1.03)
+129159738827: numHdrLayers(1), size(1063x2520), flags(0), desiredRatio(1.03)
+129174753475: numHdrLayers(1), size(1074x2520), flags(0), desiredRatio(1.03)
+129182432850: numHdrLayers(1), size(1076x2520), flags(0), desiredRatio(1.03)
+129207321796: numHdrLayers(1), size(1078x2520), flags(0), desiredRatio(1.03)
+129224159179: numHdrLayers(1), size(1079x2520), flags(0), desiredRatio(1.03)
+129249148710: numHdrLayers(1), size(1080x2520), flags(0), desiredRatio(1.03)
+133804951288: numHdrLayers(2), size(1080x2520), flags(0), desiredRatio(5.00)
+138183595507: numHdrLayers(1), size(1080x2520), flags(0), desiredRatio(1.03)
+176131452265: numHdrLayers(0), size(0x0), flags(0), desiredRatio(0.00)
+
+Sync configuration: [using: EGL_ANDROID_native_fence_sync EGL_KHR_wait_sync]
+
+Scheduler:
+Features
+    PresentFences=true
+    KernelIdleTimer=true
+    ContentDetection=true
+
+Policy
+    pacesetterDisplayId=4633128672291735937
+    layerHistory={size=159, active=0}
+	GameFrameRateOverrides=
+		(uid, gameModeOverride, gameDefaultOverride)=
+    touchTimer=300.000 ms
+    displayPowerTimer=1000.000 ms
+    touchControlTimer=2700.000 ms
+    boostTimer=4000.000 ms
+    HRR=false
+
+
+## GPU driver search (xclipse / amd / pvr / qcom)
+/vendor/lib64/android.hardware.graphics.allocator-V2-ndk.so
+/vendor/lib64/android.hardware.graphics.allocator@2.0.so
+/vendor/lib64/android.hardware.graphics.allocator@3.0.so
+/vendor/lib64/android.hardware.graphics.allocator@4.0.so
+/vendor/lib64/android.hardware.graphics.bufferqueue@1.0.so
+/vendor/lib64/android.hardware.graphics.bufferqueue@2.0.so
+/vendor/lib64/android.hardware.graphics.common-V5-ndk.so
+/vendor/lib64/android.hardware.graphics.common@1.0.so
+/vendor/lib64/android.hardware.graphics.common@1.1.so
+/vendor/lib64/android.hardware.graphics.common@1.2.so
+/vendor/lib64/android.hardware.graphics.composer3-V3-ndk.so
+/vendor/lib64/android.hardware.graphics.composer@2.1-resources.so
+/vendor/lib64/android.hardware.graphics.composer@2.1.so
+/vendor/lib64/android.hardware.graphics.composer@2.2-resources.so
+/vendor/lib64/android.hardware.graphics.composer@2.2.so
+/vendor/lib64/android.hardware.graphics.extension.composer3-V4-ndk.so
+/vendor/lib64/android.hardware.graphics.mapper@2.0.so
+/vendor/lib64/android.hardware.graphics.mapper@2.1.so
+/vendor/lib64/android.hardware.graphics.mapper@3.0.so
+/vendor/lib64/android.hardware.graphics.mapper@4.0.so
+/vendor/lib64/egl/libGLESv1_CM_samsung.so
+/vendor/lib64/egl/libGLESv2_samsung.so
+/vendor/lib64/hw/android.hardware.graphics.mapper@4.0-impl-sgr.so
+/vendor/lib64/hw/vulkan.samsung.so
+/vendor/lib64/libSGPUOpenCL.so
+/vendor/lib64/libdrm_sgpu.so
+/vendor/lib64/libenn_user_driver_gpu.so
+/vendor/lib64/libenn_user_driver_gpu_lib.so
+/vendor/lib64/libexynosgraphicbuffer.so
+/vendor/lib64/libexynosgraphicbuffer_core.so
+/vendor/lib64/libgpudataproducer.so
+/vendor/lib64/libhdraid.gpu.arcsoft.so
+/vendor/lib64/libmcaimegpu.samsung.so
+/vendor/lib64/libsatmcaimegpu.samsung.so
+
+## /proc/gpuinfo & relevant sysfs
+cat: /proc/gpuinfo: No such file or directory
+17000010.devfreq_mif
+17000020.devfreq_int
+17000030.devfreq_npu
+17000050.devfreq_aud
+17000060.devfreq_intcam
+17000070.devfreq_cam
+17000080.devfreq_disp
+17000090.devfreq_csis
+170000a0.devfreq_isp
+170000b0.devfreq_mfc
+170000c0.devfreq_mfd
+170000d0.devfreq_icpu
+170000e0.devfreq_dsp
+170000f0.devfreq_dnc
+17000100.devfreq_hsi0
+17000110.devfreq_ufd
+17000120.devfreq_unpu
+22200000.sgpu
+
+ls: /sys/class/kgsl: No such file or directory
+
+## strings for GPU model in vulkan loader
+android.hardware.bluetooth@1.0-impl-qti.so
+android.hardware.bluetooth@aidl-impl-qti.so
+android.hardware.graphics.mapper@4.0-impl-sgr.so
+android.hardware.soundtrigger3.exynos-impl.so
+audio.primary.default.so
+audio.r_submix.default.so
+audio.usb.default.so
+camera.s5e9955.so
+camera.unihal.default.so
+gatekeeper.s5e9955.so
+gralloc.default.so
+libsecaudiohal_aidl.so
+libsthal_exynos.so
+local_time.default.so
+mapper.stableC-impl-sgr.so
+power.default.so
+vibrator.default.so
+vulkan.samsung.so
+
+## EGL info via dumpsys
+Sync configuration: [using: EGL_ANDROID_native_fence_sync EGL_KHR_wait_sync]
+
+Scheduler:
+
+## Vulkan device probe (vulkaninfo via Skia output above)
+Device exposes VK_AMD_* extensions and VK_SEC_amigo_profiling and VK_SECX_properties.
+GPU is Samsung Xclipse 950 (RDNA-based, 'sgpu' kernel driver), NOT Mali.
+
+## Storage
+Filesystem      Size Used Avail Use% Mounted on
+/dev/fuse       222G  49G  173G  22% /storage/emulated
+Filesystem       Size Used Avail Use% Mounted on
+/dev/block/dm-71 222G  49G  173G  22% /data/user/0
+
+## Battery / thermal at probe time
+cat: /sys/class/power_supply/battery/temp: Permission denied
+Current Battery Service state:
+  AC powered: false
+  USB powered: true
+  Wireless powered: false
+  Dock powered: false
+  Max charging current: 0
+ Time when the latest updated value of the Max charging current was sent via battery changed broadcast: 0
+  Max charging voltage: 0
+  Charge counter: 3994200
+  status: 5
+  health: 2
+  present: true
+  level: 97
+  scale: 100
+  voltage: 4348
