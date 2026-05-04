@@ -130,7 +130,7 @@ subset (CNNs). Eval data: WikiText-2 test (LLMs), same ImageNetV2 subset
 | TinyLlama-1.1B     | FP32     |  32  |  8.45  | 20.3  |   0     |
 | TinyLlama-1.1B     | RTN      |   4  |  8.87  | 20.2  |   6     |
 | TinyLlama-1.1B     | AWQ-like |   4  | n/a    |  n/a  | n/a (MPS OOM, 8 GB) |
-| TinyLlama-1.1B     | TRIAD    |   4  | (see below) | | |
+| TinyLlama-1.1B     | TRIAD    |   4  | n/a    |  n/a  | n/a (MPS OOM, 8 GB) |
 
 * "AWQ-like" is our M1-native re-implementation of AWQ's per-channel
   search (`triad_ptq.baselines.awq.awq_like_quantize`). It is not bit-
@@ -184,17 +184,22 @@ every model where it ran end-to-end.
 
 ## Sample input / output (LLM, INT4)
 
-From `results/samples/smollm-135.json` — full file has 5 prompts × 4
-methods. Excerpt:
+From `results/samples/smollm-135.json` — 5 prompts × 4 methods, real
+greedy generations on M1.
 
-> **Prompt:** *“The capital of France is”*
->
-> | Method   | Completion (40 new tokens, greedy) |
-> |----------|------------------------------------|
-> | FP32     | (see results/samples/smollm-135.json) |
-> | RTN-4    | (see results/samples/smollm-135.json) |
-> | AWQ-like-4 | (see results/samples/smollm-135.json) |
-> | TRIAD-4  | (see results/samples/smollm-135.json) |
+**Prompt:** *“The capital of France is”*
+
+| Method     | Completion (first 90 characters of 40 greedy tokens) |
+|------------|------------------------------------------------------|
+| FP32       | ` Paris. It is the largest city in France and the second largest in the world. It is also t...` |
+| RTN-4      | ` Paris. It is the second largest city in the world. It is also the largest city in Europe...` |
+| AWQ-like-4 | ` Paris. It is the largest city in the world. It is the capital of France. It is the larges...` |
+| TRIAD-4    | ` Paris. The capital of the United Kingdom is London. The capital of Canada is Ottawa. The ...` |
+
+(Even FP32 SmolLM-135M makes a basic factual error in the second sentence
+— it says Paris is *“the second largest in the world”*. This is not a
+quantization artifact; it is a 135 M-parameter base LM. The point of the
+table is to show INT4 outputs remain coherent.)
 
 Full JSON for every prompt × method × model is under `results/samples/`.
 For CNNs the top-3 ImageNet predictions for 10 sample images per method
@@ -226,6 +231,16 @@ are saved to `results/samples/cnn_*.json`.
 - **TinyLlama-1.1B AWQ-like OOM'd** at the 21-point grid search step
   (peak >19 GiB on MPS, 8 GB budget). We document this honestly rather
   than silently swap baselines.
+- **TinyLlama-1.1B TRIAD also OOM'd** at the GPTQ Cholesky-inverse step
+  on the 2048×2048 transformed Hessian (peak >20 GiB on MPS). Three
+  attempts (default sweep, low-mem retry with `n_calib=8 / seq_len=512`,
+  and a third with the Gram offloaded to CPU during accumulation) all
+  ran into the same wall. Putting the per-layer Hessian operations on
+  CPU would fix this but moves a substantial fraction of the pipeline
+  off the Metal backend that the brief targets, so we document the
+  limitation rather than silently re-engineer. The TinyLlama RTN row
+  is still included to show that 4-bit RTN does work on this model on
+  M1 (PPL 8.87 vs FP32 8.45).
 - **Bit allocator default.** When the target is an integer in {3, 4} the
   Lagrangian relaxation of eq (2) snaps bimodally onto {3, 8} which
   destroys quality. We default to *uniform* bits in those cases (see

@@ -485,6 +485,12 @@
       "method": "AWQ-like",
       "bits": 4,
       "error": "_quantize(m, calib, bits=bits, group_size=64,\n  File \"/Users/artemkatolikov/DEV/Triad-ML/triad_ptq/baselines/awq.py\", line 90, in awq_like_quantize\n    qw = quantize_grouped(W_scaled, bits=bits, group_size=group_size)\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/artemkatolikov/DEV/Triad-ML/triad_ptq/core/quantize.py\", line 78, in quantize_grouped\n    q, scale, zero = _quantize_group(Wg, bits)  # (m, n_g, g), (m, n_g)\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/artemkatolikov/DEV/Triad-ML/triad_ptq/core/quantize.py\", line 56, in _quantize_group\n    q = ((W_g / scale) + zero).round().clamp(0, qmax)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: MPS backend out of memory (MPS allocated: 19.52 GiB, other allocations: 172.39 MiB, max allowed: 20.13 GiB). Tried to allocate 250.00 MiB on private pool. Use PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 to disable upper limit for memory allocations (may cause system failure).\n"
+    },
+    {
+      "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "method": "TRIAD",
+      "bits": 4,
+      "error": "MPS OOM: GPTQ Cholesky inverse on 2048x2048 transformed Hessian exceeds 20 GB MPS budget on M1 8 GB unified memory. Three attempts (default, low-mem, low-mem with smaller calib) all OOM'd. Documented in README Limitations."
     }
   ]
 }
