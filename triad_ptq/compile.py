@@ -10,6 +10,26 @@ Implements §3.1 of the paper (Steps A-F):
      TriadConv2d wrappers
 
 Returns the same `model` instance, mutated in place.
+
+Memory layout (`a_device='cpu'`, the low-mem path used for >=1B params on
+M1 8 GB):
+
+  - Stage A allocates one Gram matrix `A` per quantizable layer on `a_device`
+    (host RAM). For TinyLlama-1.1B this is ~5 GB on CPU but never lives on
+    MPS simultaneously.
+  - Stage B is scalar-only.
+  - Stage C runs a single per-layer top-K kappa pass; it transiently
+    materialises one (m, n) tensor on `dev` (peak ~46 MB for TinyLlama
+    down_proj) and discards it before the next layer.
+  - Stage D+E+F fuse into a single per-layer streaming loop. Each iteration:
+      1. Pull A_l from `a_device` to `dev`.
+      2. eigh A_l on CPU -> U_l, eig_l (CPU, fp64) -> move to dev as fp32.
+      3. Compute beta*, Lam_b, W_prime, H_prime.
+      4. GPTQ -> qweight.
+      5. Build TriadLinear/TriadConv2d, place on dev, replace in model.
+      6. del A_l, U_l, eig_l, W_prime, H_prime; empty_cache().
+    Peak transient is dominated by U (n^2) and W_prime (m*n); both freed
+    before the next layer.
 """
 from __future__ import annotations
 
@@ -33,7 +53,7 @@ from .core.gptq_solver import gptq_quantize_layer
 from .core.grid import compute_grid
 from .core.modules import TriadConv2d, TriadLinear
 from .core.quantize import _dequantize, quantize_grouped
-from .core.router import compute_kappa, select_super_weights
+from .core.router import SuperWeightSet, compute_kappa, compute_kappa_topk
 from .utils.device import best_device, warn_no_silent_fallback
 
 console = Console()
@@ -51,6 +71,24 @@ def _set_module(root: nn.Module, dotted_name: str, new: nn.Module) -> None:
         setattr(parent, last, new)
 
 
+def _module_weight2d(mod: nn.Module) -> torch.Tensor:
+    """Return the weight as a 2-D matrix (out, in*[kh*kw])."""
+    if isinstance(mod, nn.Linear):
+        return mod.weight.data
+    if isinstance(mod, nn.Conv2d):
+        w = mod.weight.data
+        return w.reshape(w.size(0), -1)
+    raise TypeError(type(mod))
+
+
+def _empty_cache(dev: torch.device) -> None:
+    if dev.type == "mps":
+        torch.mps.empty_cache()
+    elif dev.type == "cuda":
+        torch.cuda.empty_cache()
+    gc.collect()
+
+
 def compile_model(
     model: nn.Module,
     *,
@@ -64,6 +102,7 @@ def compile_model(
     group_size: int = 64,
     n_calib: int = 128,
     device: str | None = None,
+    a_device: str | None = None,
     forward_fn=None,
     output_fn=None,
     rho_probe_n: int = 4,
@@ -72,6 +111,7 @@ def compile_model(
 ):
     warn_no_silent_fallback()
     dev = torch.device(device) if device else best_device()
+    a_dev = torch.device(a_device) if a_device else dev
     if calibration is None:
         raise ValueError("`calibration` (an iterable of forward-batches) is required")
     cal_list = list(calibration)
@@ -86,22 +126,21 @@ def compile_model(
     if not layers:
         raise RuntimeError("no quantizable modules found in model")
     if progress:
-        console.log(f"TRIAD-PTQ: {len(layers)} quantizable layers, target={bits}-bit")
+        console.log(
+            f"TRIAD-PTQ: {len(layers)} quantizable layers, target={bits}-bit, "
+            f"compute_dev={dev}, gram_dev={a_dev}"
+        )
 
     # ---- Step A: sensitivity profiling ----
     t0 = time.perf_counter()
     stats = collect_input_stats(
         model, cal_list, device=dev, n_max=n_calib,
-        layers=layers, forward_fn=forward_fn, a_device=dev,
+        layers=layers, forward_fn=forward_fn, a_device=a_dev,
     )
     if progress:
         console.log(f"  collected A, abs_X, Y2 in {time.perf_counter()-t0:.1f}s")
 
     # ---- rho probe ----
-    # rho is needed both for bit_allocator='trace' AND for super-weight kappa
-    # (eq 3 multiplies kappa by rho). We probe whenever super_weight_frac>0
-    # OR bit_allocator='trace'. To keep cost bounded, the probe runs on the
-    # *first* `rho_probe_n` calibration batches only.
     need_rho = (super_weight_frac and super_weight_frac > 0) or bit_allocator == "trace"
     if need_rho:
         probe = cal_list[: max(1, min(rho_probe_n, len(cal_list)))]
@@ -127,11 +166,6 @@ def compile_model(
     if bit_allocator == "uniform":
         alloc = uniform_bits(layer_W, bits)
     elif bit_allocator == "trace":
-        # When the target is an integer in {3, 4}, the rate-distortion split
-        # into {3, 4, 8} collapses bimodally and 3-bit quant hurts most layers
-        # too much to be compensated by a few 8-bit layers. We honor the
-        # paper's {3, 4, 8} grid only when the target is fractional, so the
-        # mixed allocation is doing real work; otherwise default to uniform.
         if abs(bits - round(bits)) < 1e-6 and int(round(bits)) in (3, 4):
             alloc = uniform_bits(layer_W, int(round(bits)))
         else:
@@ -140,130 +174,167 @@ def compile_model(
         alloc = allocate_bits(layer_S, layer_W, target_avg_bits=float(bits))
     if progress:
         console.log(
-            f"  bit alloc: target={alloc.target_bits_per_w:.2f} achieved={alloc.achieved_bits_per_w:.3f} "
+            f"  bit alloc: target={alloc.target_bits_per_w:.2f} "
+            f"achieved={alloc.achieved_bits_per_w:.3f} "
             f"distribution={dict(zip(*[list(x) for x in (set(alloc.bits), [alloc.bits.count(b) for b in set(alloc.bits)])]))}"
         )
 
-    # ---- Step C+D: per-layer transform + super-weight kappas ----
-    layer_kappas: dict[str, torch.Tensor] = {}
-    layer_grid: dict[str, dict] = {}
-    layer_W_prime: dict[str, torch.Tensor] = {}
+    # ---- Step C (pass 1): streaming top-K kappa for global super-weight pick ----
+    sw_global: dict[str, SuperWeightSet] = {}
+    if super_weight_frac and super_weight_frac > 0:
+        t2 = time.perf_counter()
+        total_weights = sum(layer_W)
+        target_count = max(1, int(round(total_weights * float(super_weight_frac))))
+        candidates: list[dict] = []
+        for (name, mod), b in zip(layers, alloc.bits):
+            s = stats[name]
+            W_full = _module_weight2d(mod).to(dev).float()
+            layer_count = W_full.numel()
+            expected_share = max(1, int(round(layer_count * float(super_weight_frac))))
+            cap = min(layer_count, max(256, expected_share * 4))
+            rows, cols, vals = compute_kappa_topk(
+                W_full, s.abs_X.to(dev), s.rho, cap
+            )
+            candidates.append({
+                "name": name,
+                "rows": rows.cpu(),
+                "cols": cols.cpu(),
+                "vals": vals.cpu().float(),
+                "shape": tuple(W_full.shape),
+            })
+            del W_full, rows, cols, vals
+            _empty_cache(dev)
 
+        all_vals = torch.cat([c["vals"] for c in candidates])
+        k_global = min(target_count, all_vals.numel())
+        if k_global > 0:
+            threshold = (
+                torch.topk(all_vals, k_global, largest=True).values.min().item()
+            )
+        else:
+            threshold = float("inf")
+        del all_vals
+
+        achieved_count = 0
+        for c in candidates:
+            mask = c["vals"] >= threshold
+            r = c["rows"][mask].long()
+            cc = c["cols"][mask].long()
+            sw_global[c["name"]] = SuperWeightSet(
+                layer_name=c["name"],
+                rows=r,
+                cols=cc,
+                values=torch.empty(0),
+                shape=c["shape"],
+            )
+            achieved_count += int(r.numel())
+        del candidates
+        if progress:
+            achieved_tau = achieved_count / max(total_weights, 1)
+            console.log(
+                f"  super-weights tau={super_weight_frac:.2e} "
+                f"(achieved {achieved_tau:.2e}) in {time.perf_counter()-t2:.1f}s"
+            )
+    else:
+        for name, _ in layers:
+            sw_global[name] = SuperWeightSet(
+                layer_name=name,
+                rows=torch.empty(0, dtype=torch.long),
+                cols=torch.empty(0, dtype=torch.long),
+                values=torch.empty(0),
+                shape=tuple(_module_weight2d(_).shape) if False else (0, 0),
+            )
+
+    # ---- Step D+E+F (pass 2): per-layer streaming GPTQ + module replace ----
+    repl_count = 0
+    layer_grid_meta: dict[str, dict] = {}
+    t3 = time.perf_counter()
     for (name, mod), b in zip(layers, alloc.bits):
         s = stats[name]
         W = _module_weight2d(mod).to(dev).float()
+
+        # ---- D: grid (analytic eigh + closed-form beta) ------------------
         if cov_grid == "analytic":
-            grid = compute_grid(W, s.A)
-            # Per paper §2.4, beta=0 corresponds to no transformation. If the
-            # closed-form gives beta*=0 we must skip the rotation: applying U
-            # by itself (without scaling) does not change quantization error
-            # in the per-channel symmetric model but breaks group-wise
-            # quantization (the eigenbasis spreads weight magnitudes across
-            # channels in a way that hurts group scales).
+            # Bring this one layer's A to compute device. eigh is done on CPU
+            # via safe_eigh inside compute_grid (it pulls A.cpu()).
+            A_layer = s.A.to(dev)
+            grid = compute_grid(W, A_layer)
+            del A_layer
             if grid.beta_star <= 1e-4:
                 U = None
                 Lam_b = None
                 W_prime = W
-                layer_grid[name] = {
-                    "U": None, "Lam_b": None, "beta": 0.0, "eig": grid.eig,
-                }
+                eig = grid.eig
+                grid_info = {"beta": 0.0, "eig": eig.detach().cpu()}
             else:
                 U = grid.U
                 Lam_b = grid.Lam_pow_beta
                 W_prime = W @ U * Lam_b.unsqueeze(0)  # (m, n)
-                layer_grid[name] = {
-                    "U": U, "Lam_b": Lam_b, "beta": grid.beta_star, "eig": grid.eig,
-                }
+                eig = grid.eig
+                grid_info = {"beta": float(grid.beta_star), "eig": eig.detach().cpu()}
+            del grid
         else:
             U = None
             Lam_b = None
             W_prime = W
-            layer_grid[name] = {"U": None, "Lam_b": None, "beta": 0.0, "eig": None}
-        layer_W_prime[name] = W_prime
-        # kappa is computed in original basis (paper §2.3)
-        kap = compute_kappa(W, s.abs_X.to(dev), s.rho)
-        layer_kappas[name] = kap
+            eig = None
+            grid_info = {"beta": 0.0, "eig": None}
 
-    # ---- Step C cont.: select super-weights globally ----
-    if super_weight_frac and super_weight_frac > 0:
-        sw, achieved_tau = select_super_weights(layer_kappas, super_weight_frac)
-        if progress:
-            console.log(f"  super-weights tau={super_weight_frac:.2e} (achieved {achieved_tau:.2e})")
-    else:
-        sw = {n: None for n in layer_kappas}
-
-    # ---- Step E+F: GPTQ pass + replace modules ----
-    repl_count = 0
-    for (name, mod), b in zip(layers, alloc.bits):
-        s = stats[name]
-        W_prime = layer_W_prime[name]
-        # Build the *transformed* Hessian H' = (X')^T X' = Lam^{-2 beta} U^T A U Lam^{-2 beta}
-        # but in the eigenbasis A' = diag(Lam^{1 - 2 beta}) -- use it directly.
-        gd = layer_grid[name]
-        if gd["U"] is not None:
-            beta = gd["beta"]
-            eig = gd["eig"].to(W_prime.device)
-            # In the transformed basis, H' = (X')^T X' has eigenvalues
-            #   lambda_k^{1 - 2*beta}    along the k-th transformed dim
-            # i.e. H' is diagonal of size n with these entries.
-            Hp_diag = eig.clamp_min(1e-12).pow(1.0 - 2.0 * beta)
+        # ---- Build H' ----------------------------------------------------
+        if U is not None:
+            beta = grid_info["beta"]
+            Hp_diag = eig.to(W_prime.device).clamp_min(1e-12).pow(1.0 - 2.0 * beta)
             H_prime = torch.diag(Hp_diag)
+            del Hp_diag
         else:
-            # use original A
-            H_prime = s.A.to(W_prime.device)
+            # use original A (pulled to compute device just for this layer)
+            H_prime = s.A.to(dev).float()
 
-        # Identify per-layer super-weight positions (still expressed in original
-        # column basis if no transform; in transformed basis if transformed).
-        # For analytic grid we apply correction at inference in W_prime basis,
-        # so we map super-weight positions through the same transform.
-        sw_set = sw.get(name)
+        # Free the per-layer A on a_device once we've consumed it. Setting
+        # .A to a zero-byte tensor breaks any later access (intentional --
+        # it should only be consumed once per layer).
+        stats[name].A = torch.empty(0)
+
+        # ---- Super-weight rows/cols (rebase to transformed basis if needed)
+        sw_set = sw_global.get(name)
         sw_rows = sw_cols = sw_vals = None
         if sw_set is not None and sw_set.rows.numel() > 0:
-            # Move SW indices to dev. Values come from W_prime at those indices
-            # (since correction is applied in transformed basis).
             r = sw_set.rows.to(W_prime.device)
             c = sw_set.cols.to(W_prime.device)
-            # If transformed, the kappa positions are in original (i, j) space;
-            # but the W_prime matrix has the same shape (m, n) and 'j' indexes
-            # transformed input dims. Indices between bases differ. To keep this
-            # honest, we always express super-weights in the *quantized* matrix
-            # basis (same as W_prime). So recompute kappa on |W_prime| to pick
-            # positions in the transformed basis:
-            if gd["U"] is not None:
-                # rebuild kappa in transformed basis using transformed activations'
-                # mean magnitude: E[|X'_j|] under linearization is approximately
-                # Lam^{-beta} * (U^T E[|X|]) — we use this as an estimate.
-                est_absXp = (gd["Lam_b"].pow(-1) * (gd["U"].t() @ s.abs_X.to(dev))).abs()
+            if U is not None:
+                # rebuild kappa in transformed basis (paper §2.3, transformed)
+                est_absXp = (Lam_b.pow(-1) * (U.t() @ s.abs_X.to(dev))).abs()
                 kp = compute_kappa(W_prime, est_absXp, s.rho)
-                # take same number of entries as global allotment for this layer
                 k_count = sw_set.rows.numel()
                 if k_count > 0:
                     flat = kp.flatten()
-                    top_idx = torch.topk(flat, k_count).indices
+                    top_idx = torch.topk(flat, min(k_count, flat.numel())).indices
                     r = (top_idx // kp.size(1)).to(W_prime.device)
                     c = (top_idx % kp.size(1)).to(W_prime.device)
+                    del flat, top_idx
+                del kp, est_absXp
             sw_rows = r.cpu()
             sw_cols = c.cpu()
-            # We'll fill values *after* GPTQ runs (residual = W_prime[r,c] - W_q[r,c])
 
-        # ---- Step E: GPTQ on (W_prime, H_prime) ----
+        # ---- E: GPTQ on (W_prime, H_prime) -------------------------------
         qweight = gptq_quantize_layer(
             W_prime, H_prime,
             bits=int(b),
             group_size=group_size,
             actorder=False,
         )
+        del H_prime
 
-        # Compute super-weight residuals in W_prime basis: difference between
-        # un-quantized W_prime and dequantized W_q at SW positions.
-        if sw_rows is not None:
+        # Compute SW residuals in W_prime basis
+        if sw_rows is not None and sw_rows.numel() > 0:
             W_dq = _dequantize(qweight.q, qweight.scales, qweight.zeros, qweight.group_size)
-            sw_vals = (W_prime[sw_rows.to(W_prime.device), sw_cols.to(W_prime.device)]
-                       - W_dq[sw_rows.to(W_prime.device), sw_cols.to(W_prime.device)]).cpu().float()
+            sw_vals = (
+                W_prime[sw_rows.to(W_prime.device), sw_cols.to(W_prime.device)]
+                - W_dq[sw_rows.to(W_prime.device), sw_cols.to(W_prime.device)]
+            ).cpu().float()
+            del W_dq
 
-        # ---- Step F: build replacement module ----
-        U = gd["U"]
-        Lam_b = gd["Lam_b"]
+        # ---- F: build replacement module ---------------------------------
         if isinstance(mod, nn.Linear):
             new_mod = TriadLinear.from_linear(
                 mod, qweight,
@@ -278,34 +349,30 @@ def compile_model(
                 sw_rows=sw_rows, sw_cols=sw_cols, sw_vals=sw_vals,
                 dtype=torch.float32,
             )
-        new_mod.to(W_prime.device)
+        new_mod.to(dev)
         _set_module(model, name, new_mod)
         repl_count += 1
 
-        # free intermediates
-        del W_prime, H_prime, qweight
-        if dev.type == "mps":
-            torch.mps.empty_cache()
-        gc.collect()
+        layer_grid_meta[name] = grid_info
+
+        # Free intermediates. U/Lam_b survive only inside the new module
+        # buffers; the local references go out of scope here.
+        del W, W_prime, qweight, U, Lam_b
+        if eig is not None:
+            del eig
+        _empty_cache(dev)
 
     if progress:
-        console.log(f"  replaced {repl_count} layers in {time.perf_counter()-t0:.1f}s total")
+        console.log(
+            f"  replaced {repl_count} layers in "
+            f"{time.perf_counter()-t3:.1f}s (total {time.perf_counter()-t0:.1f}s)"
+        )
 
     if return_meta:
         return model, {
             "alloc": alloc,
-            "stats": stats,
-            "grid": layer_grid,
             "n_layers": len(layers),
+            "grid": layer_grid_meta,
+            "super_weights": {n: int(s.rows.numel()) for n, s in sw_global.items()},
         }
     return model
-
-
-def _module_weight2d(mod: nn.Module) -> torch.Tensor:
-    """Return the weight as a 2-D matrix (out, in*[kh*kw])."""
-    if isinstance(mod, nn.Linear):
-        return mod.weight.data
-    if isinstance(mod, nn.Conv2d):
-        w = mod.weight.data
-        return w.reshape(w.size(0), -1)
-    raise TypeError(type(mod))

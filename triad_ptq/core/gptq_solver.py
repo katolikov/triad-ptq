@@ -47,10 +47,12 @@ def gptq_quantize_layer(
     m, n = W.shape
     Wq = W.clone().to(torch.float32)
 
-    # Damp the Hessian
+    # Damp the Hessian. We mutate a local fp32 copy in place to avoid retaining
+    # the caller's H alongside the Cholesky factors (memory-critical on
+    # 1B-class models where H can be 5632x5632 fp32 = 127 MB).
+    H = H.detach().to(torch.float32, copy=True)
     diag = H.diagonal()
     dead = diag == 0
-    H = H.clone().to(torch.float32)
     if dead.any():
         H.diagonal()[dead] = 1.0
         Wq[:, dead] = 0.0
@@ -68,9 +70,14 @@ def gptq_quantize_layer(
     H.diagonal().add_(damp)
 
     # Cholesky of H^{-1} (upper triangular) --------------------------------
-    # GPTQ uses Hinv = (cholesky(H)^{-T})  -> we work with U^{-1}
+    # GPTQ uses Hinv = (cholesky(H)^{-T})  -> we work with U^{-1}.
+    # Free intermediates eagerly: H is dead after L is computed, L is dead
+    # after Hinv is computed. Without these `del`s we transiently hold three
+    # (n, n) fp32 tensors at the same time (H + L + Hinv).
     L = torch.linalg.cholesky(H)
+    del H
     Hinv = torch.cholesky_inverse(L)
+    del L
     Hinv = torch.linalg.cholesky(Hinv, upper=True)  # upper R s.t. Hinv = R^T R
 
     # We process W in column blocks of size `blocksize`, applying GPTQ within.
