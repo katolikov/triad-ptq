@@ -1,0 +1,21 @@
+{
+  "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+  "seed": 44257,
+  "n_probe": 8,
+  "seq_len": 256,
+  "rel_L2": 2.8446249871194595e-06,
+  "cos_mean": 1.000000238418579,
+  "acceptance_gate": "cos >= 0.9999",
+  "passes": true,
+  "rotated_state_dict": "/tmp/triad-tinyllama-r1/model_rotated_fp16.pt",
+  "rotated_state_dict_mb": 2200.163346,
+  "pre_forward_sec": 5.776221083011478,
+  "post_forward_sec": 4.031984208035283,
+  "rotation_info": {
+    "hidden_size": 2048,
+    "n_blocks": 22,
+    "Q_seed": 44257,
+    "Q_frob": 45.25483322143555,
+    "Q_orthogonality_err": 3.1577803838445107e-06
+  }
+}
