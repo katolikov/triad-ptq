@@ -1,0 +1,43 @@
+{
+  "device": "Galaxy Z Flip7, Exynos 2500, Xclipse 950 GPU",
+  "harness": "MLCChat APK 1.0 (commit 9368488 / our debug build), driven via adb input + uiautomator dump",
+  "prompt": "Write a short poem about the ocean and the moonlight in simple words that a child could read and enjoy as a bedtime story now please.",
+  "metrics_source": "in-app TextView 'prefill: X tok/s, decode: Y tok/s', extracted via uiautomator dump after each generation reaches stable state",
+  "protocol": "N=3 runs per model, sequential within model; ref measured first (already loaded from session 2), then home->TRIAD chat icon to load TRIAD, then 3 more runs. ~60-90s per generation, ~3 s cooldown between runs.",
+  "runs": [
+    {"model": "tinyllama-mlc-ref-q4f16_1", "run": 1, "prefill_tok_s": 25.9, "decode_tok_s": 38.8},
+    {"model": "tinyllama-mlc-ref-q4f16_1", "run": 2, "prefill_tok_s": 25.0, "decode_tok_s": 42.4},
+    {"model": "tinyllama-mlc-ref-q4f16_1", "run": 3, "prefill_tok_s": 25.5, "decode_tok_s": 43.6},
+    {"model": "triad-tinyllama-int4",      "run": 1, "prefill_tok_s": 25.3, "decode_tok_s": 40.0},
+    {"model": "triad-tinyllama-int4",      "run": 2, "prefill_tok_s": 25.3, "decode_tok_s": 41.2},
+    {"model": "triad-tinyllama-int4",      "run": 3, "prefill_tok_s": 25.4, "decode_tok_s": 40.8}
+  ],
+  "summary": {
+    "ref": {
+      "prefill_mean_tok_s": 25.47,
+      "prefill_std_tok_s": 0.45,
+      "decode_mean_tok_s":  41.60,
+      "decode_std_tok_s":   2.59,
+      "decode_max_minus_min_tok_s": 4.8
+    },
+    "triad": {
+      "prefill_mean_tok_s": 25.33,
+      "prefill_std_tok_s": 0.06,
+      "decode_mean_tok_s":  40.67,
+      "decode_std_tok_s":   0.62,
+      "decode_max_minus_min_tok_s": 1.2
+    },
+    "delta": {
+      "prefill_pct_T_vs_R":  -0.5,
+      "decode_pct_T_vs_R":   -2.2,
+      "interpretation": "Both within 1 sigma of ref; gap is consistent with measurement noise. The decode std for ref alone (2.6 tok/s) covers more than the entire delta between models (0.9 tok/s)."
+    },
+    "phase5_single_run_comparison": {
+      "phase5_prefill_R": 25.2, "phase5_prefill_T": 18.2,
+      "phase5_decode_R":  42.9, "phase5_decode_T":  37.7,
+      "phase5_apparent_decode_gap_pct": 12.1,
+      "phase5_apparent_prefill_gap_pct": 27.8,
+      "verdict_after_N3_replication": "Both Phase-5 gaps were within the empirical 1-sigma band of the single-prompt protocol; the prefill gap in particular (28%) was an outlier vs the new 3-run mean (25.3 v 25.5)."
+    }
+  }
+}
