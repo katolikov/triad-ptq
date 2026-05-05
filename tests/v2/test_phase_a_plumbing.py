@@ -38,7 +38,6 @@ V2_LEAF_MODULES = [
 # UNIMPLEMENTED set and into the IMPLEMENTED set. Phase B implements
 # triad_ptq._v2.router.squisher.
 V2_LEAF_MODULES_UNIMPLEMENTED = [
-    "triad_ptq._v2.rotation.sign_perm",
     "triad_ptq._v2.transform.learnable_beta",
     "triad_ptq._v2.superweight.channel_int8",
     "triad_ptq._v2.lwc.selective",
@@ -46,6 +45,7 @@ V2_LEAF_MODULES_UNIMPLEMENTED = [
 ]
 V2_LEAF_MODULES_IMPLEMENTED = [
     "triad_ptq._v2.router.squisher",
+    "triad_ptq._v2.rotation.sign_perm",
 ]
 
 
@@ -69,11 +69,8 @@ def test_v2_leaf_module_marked_implemented(modname: str) -> None:
 
 
 def test_v2_unimplemented_leaves_raise_not_implemented() -> None:
-    from triad_ptq._v2.rotation import sign_perm
     from triad_ptq._v2.transform import learnable_beta
 
-    with pytest.raises(NotImplementedError):
-        sign_perm.apply_sign_perm_to_llama()
     with pytest.raises(NotImplementedError):
         learnable_beta.train_learnable_beta()
 

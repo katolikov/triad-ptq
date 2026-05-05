@@ -1,0 +1,82 @@
+{
+  "phase": "C",
+  "fixture": "tiny LlamaConfig hidden=64 num_layers=2",
+  "prompts": "8 random token sequences of length 32",
+  "group_size": 32,
+  "kinds_tested": [
+    "sign_perm",
+    "block_hadamard"
+  ],
+  "seeds": [
+    42,
+    1337,
+    271828
+  ],
+  "cosine_min": 1.0000004768371582,
+  "cosine_max": 1.000002145767212,
+  "cosine_mean": 1.0000015497207642,
+  "acceptance_gate": ">= 0.99999",
+  "acceptance_pass": true,
+  "per_run": [
+    {
+      "kind": "sign_perm",
+      "seed": 42,
+      "d": 64,
+      "group_size": 32,
+      "cosine": 1.0000019073486328,
+      "rel_l2": 2.9510976921651375e-07,
+      "Q_orth_err": 0.0,
+      "is_block_diagonal": true
+    },
+    {
+      "kind": "sign_perm",
+      "seed": 1337,
+      "d": 64,
+      "group_size": 32,
+      "cosine": 1.000002145767212,
+      "rel_l2": 2.850088013712129e-07,
+      "Q_orth_err": 0.0,
+      "is_block_diagonal": true
+    },
+    {
+      "kind": "sign_perm",
+      "seed": 271828,
+      "d": 64,
+      "group_size": 32,
+      "cosine": 1.0000004768371582,
+      "rel_l2": 2.8883657777342235e-07,
+      "Q_orth_err": 0.0,
+      "is_block_diagonal": true
+    },
+    {
+      "kind": "block_hadamard",
+      "seed": 42,
+      "d": 64,
+      "group_size": 32,
+      "cosine": 1.000002145767212,
+      "rel_l2": 3.7875522817629634e-07,
+      "Q_orth_err": 5.356727683647478e-07,
+      "is_block_diagonal": true
+    },
+    {
+      "kind": "block_hadamard",
+      "seed": 1337,
+      "d": 64,
+      "group_size": 32,
+      "cosine": 1.000002145767212,
+      "rel_l2": 3.882624027482096e-07,
+      "Q_orth_err": 5.356727683647478e-07,
+      "is_block_diagonal": true
+    },
+    {
+      "kind": "block_hadamard",
+      "seed": 271828,
+      "d": 64,
+      "group_size": 32,
+      "cosine": 1.0000004768371582,
+      "rel_l2": 3.860418610847248e-07,
+      "Q_orth_err": 5.356727683647478e-07,
+      "is_block_diagonal": true
+    }
+  ]
+}
