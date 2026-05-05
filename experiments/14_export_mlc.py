@@ -111,6 +111,18 @@ def main():
                     help="MLC compile target device (android | vulkan | metal | ...).")
     ap.add_argument("--skip-compile", action="store_true",
                     help="Stop after convert_weight; do not produce the .tar.")
+    ap.add_argument(
+        "--quantization", default="q4f16_1",
+        choices=["q4f16_0", "q4f16_1", "both"],
+        help=(
+            "MLC weight-packing layout. q4f16_1 is the canonical pack used by "
+            "ai/mlc.ai community models. q4f16_0 is the SoA (struct-of-arrays) "
+            "layout that the callstack.com Adreno write-up reports as faster on "
+            "mobile RDNA-class GPUs (LDS coalescing). Both produce identical "
+            "PPL within fp16 noise — pick on tok/s. 'both' emits two bundles "
+            "with -q4f16_0 / -q4f16_1 dir suffixes for side-by-side device bench."
+        ),
+    )
     args = ap.parse_args()
 
     mlc_python = Path(args.mlc_venv) / "bin" / "python"
@@ -150,45 +162,60 @@ def main():
     del model, sd
 
     # ---- 3. mlc_llm gen_config + convert_weight + compile ----------
-    if MLC_OUT.exists():
-        shutil.rmtree(MLC_OUT)
-    MLC_OUT.mkdir(parents=True, exist_ok=True)
+    quants = ["q4f16_0", "q4f16_1"] if args.quantization == "both" else [args.quantization]
+    bundles: list[dict] = []
+    for q in quants:
+        # Suffix the bundle dir when emitting more than one.
+        bundle_dir = (
+            MLC_OUT.with_name(MLC_OUT.name + f"-{q}") if len(quants) > 1 else MLC_OUT
+        )
+        if bundle_dir.exists():
+            shutil.rmtree(bundle_dir)
+        bundle_dir.mkdir(parents=True, exist_ok=True)
 
-    _run([
-        str(mlc_python), "-m", "mlc_llm", "gen_config",
-        str(HF_OUT),
-        "--quantization", "q4f16_1",
-        "--conv-template", "llama-2",
-        "--output", str(MLC_OUT),
-    ])
-    _run([
-        str(mlc_python), "-m", "mlc_llm", "convert_weight",
-        str(HF_OUT),
-        "--quantization", "q4f16_1",
-        "--output", str(MLC_OUT),
-    ])
-
-    if not args.skip_compile:
-        (MLC_OUT / "lib").mkdir(parents=True, exist_ok=True)
         _run([
-            str(mlc_python), "-m", "mlc_llm", "compile",
-            str(MLC_OUT / "mlc-chat-config.json"),
-            "--device", args.device,
-            "--quantization", "q4f16_1",
-            "--output", str(MLC_OUT / "lib" / "triad-tinyllama-android.tar"),
+            str(mlc_python), "-m", "mlc_llm", "gen_config",
+            str(HF_OUT),
+            "--quantization", q,
+            "--conv-template", "llama-2",
+            "--output", str(bundle_dir),
         ])
+        _run([
+            str(mlc_python), "-m", "mlc_llm", "convert_weight",
+            str(HF_OUT),
+            "--quantization", q,
+            "--output", str(bundle_dir),
+        ])
+
+        tar_path = bundle_dir / "lib" / f"triad-tinyllama-android-{q}.tar"
+        if not args.skip_compile:
+            tar_path.parent.mkdir(parents=True, exist_ok=True)
+            _run([
+                str(mlc_python), "-m", "mlc_llm", "compile",
+                str(bundle_dir / "mlc-chat-config.json"),
+                "--device", args.device,
+                "--quantization", q,
+                "--output", str(tar_path),
+            ])
+
+        bundle_size_mb = sum(
+            p.stat().st_size for p in bundle_dir.rglob("*") if p.is_file()
+        ) / 1e6
+        bundles.append({
+            "quantization": q,
+            "mlc_bundle_dir": str(bundle_dir),
+            "mlc_bundle_size_mb": bundle_size_mb,
+            "tar_path": str(tar_path),
+            "tar_present": tar_path.exists(),
+        })
 
     out_summary = ROOT / "results" / "phase4_export_summary.json"
     out_summary.parent.mkdir(parents=True, exist_ok=True)
-    bundle_size_mb = sum(p.stat().st_size for p in MLC_OUT.rglob("*") if p.is_file()) / 1e6
     out_summary.write_text(json.dumps({
         "hf_safetensors_dir": str(HF_OUT),
-        "mlc_bundle_dir": str(MLC_OUT),
-        "mlc_bundle_size_mb": bundle_size_mb,
         "compile_device": args.device,
-        "tar_path": str(MLC_OUT / "lib" / "triad-tinyllama-android.tar"),
-        "tar_present": (MLC_OUT / "lib" / "triad-tinyllama-android.tar").exists(),
         "hf_safetensors_size_mb": summary["model_safetensors_size_mb"],
+        "bundles": bundles,
     }, indent=2))
     print(f"wrote {out_summary}", flush=True)
 
