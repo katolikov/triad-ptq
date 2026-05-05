@@ -18,7 +18,13 @@
 # "Model List" view (e.g. 1 = first model, 2 = second). The script taps
 # the chat-icon at the right end of that row.
 #
-# Defaults: iters=5, warmups=1, cooldown_s=60.
+# Defaults: iters=10, warmups=1, cooldown_s=60.
+#
+# As of v2 (ADR-014, 2026-05-05) the default iteration count is 10 (was 3
+# during v0.3.0-session3). The N=3 protocol per ADR-006 was a useful
+# guard against the Phase-5 single-prompt outlier, but with σ ≈ 6 % of
+# decode-tps mean, N=3 cannot resolve the small (~3 %) effect sizes that
+# v2 needs to claim. Welch / paired-t at N=10 is the new contract.
 #
 # Output: JSON on stdout, one final summary line of the form
 #     {"model_id":"...","prefill_tps_mean":..., "prefill_tps_stdev":...,
@@ -33,13 +39,22 @@
 set -euo pipefail
 
 ROW="${1:?model-list-row required (1-indexed)}"
-ITERS="${2:-5}"
+ITERS="${2:-10}"
 WARMUPS="${3:-1}"
 COOLDOWN="${4:-60}"
+BASELINE_JSON="${BENCH_BASELINE_JSON:-}"
+# Phase G annotation: set BENCH_GROUP_SIZE when sweeping G ∈ {32, 64,
+# 128}; the value is echoed into the JSON so the sweep aggregator can
+# pivot rows by G. The script does NOT swap bundles — the caller
+# installs the matching APK/model row and sets this env var.
+GROUP_SIZE_ANNOT="${BENCH_GROUP_SIZE:-}"
 
 if (( ITERS < 3 )); then
-    echo "[bench] iters must be >= 3 per H5" >&2
+    echo "[bench] iters must be >= 3 per H5 (v2 default and ADR-014 minimum is 10)" >&2
     exit 64
+fi
+if (( ITERS < 10 )); then
+    echo "[bench] WARNING: iters=${ITERS} < 10 (ADR-014 contract); paired-t comparison disabled" >&2
 fi
 
 # Screen size — used to derive tap coordinates that scale with device.
@@ -147,10 +162,12 @@ print(f(d.get("prefill_tps")), f(d.get("decode_tps")),
     fi
 done
 
-python3 - "${model_id}" "${prefills[@]:-}" -- "${decodes[@]:-}" -- "${ptokens[@]:-}" -- "${ctokens[@]:-}" -- "${WARMUPS}" "${COOLDOWN}" <<'PY'
-import json, sys, statistics as s
+python3 - "${model_id}" "${BASELINE_JSON}" "${GROUP_SIZE_ANNOT}" "${prefills[@]:-}" -- "${decodes[@]:-}" -- "${ptokens[@]:-}" -- "${ctokens[@]:-}" -- "${WARMUPS}" "${COOLDOWN}" <<'PY'
+import json, math, os, sys, statistics as s
 args = sys.argv[1:]
 model_id = args.pop(0)
+baseline_path = args.pop(0)
+group_size_annot = args.pop(0) or None
 def take():
     out = []
     while args and args[0] != "--":
@@ -172,7 +189,55 @@ def ms(v):
 pm, pst = ms(pre)
 dm, dst = ms(dec)
 
-print(json.dumps({
+# Optional paired-t test against a baseline JSON (v2 / ADR-014 contract).
+# We treat iter k of this run vs iter k of the baseline run as a paired
+# observation. Caller must guarantee runs were collected back-to-back on
+# the same device session; otherwise pairing is meaningless and the test
+# should be discarded.
+def paired_t(this_v, base_v):
+    n = min(len(this_v), len(base_v))
+    if n < 3:
+        return None
+    diffs = [this_v[i] - base_v[i] for i in range(n)]
+    mean_d = s.fmean(diffs)
+    if n == 1:
+        return {"n": n, "mean_delta": mean_d, "t": None, "df": 0,
+                "p_two_sided_approx": None}
+    sd = s.stdev(diffs)
+    if sd == 0:
+        return {"n": n, "mean_delta": mean_d, "t": float("inf"),
+                "df": n - 1, "p_two_sided_approx": 0.0}
+    t = mean_d / (sd / math.sqrt(n))
+    # Approx two-sided p-value via normal tail (sufficient for N>=10).
+    z = abs(t)
+    # Abramowitz & Stegun 26.2.17 approximation of erf.
+    def _erf(x):
+        a1, a2, a3, a4, a5 = 0.254829592, -0.284496736, 1.421413741, -1.453152027, 1.061405429
+        p_ = 0.3275911
+        sign = 1 if x >= 0 else -1
+        x = abs(x)
+        t_ = 1.0 / (1.0 + p_ * x)
+        y = 1.0 - (((((a5 * t_ + a4) * t_) + a3) * t_ + a2) * t_ + a1) * t_ * math.exp(-x * x)
+        return sign * y
+    p_two = 2 * (1 - 0.5 * (1 + _erf(z / math.sqrt(2))))
+    return {"n": n, "mean_delta": mean_d, "t": t, "df": n - 1,
+            "p_two_sided_approx": p_two}
+
+paired = None
+if baseline_path and os.path.exists(baseline_path):
+    try:
+        with open(baseline_path) as fh:
+            base = json.load(fh)
+        paired = {
+            "baseline_path":    baseline_path,
+            "baseline_model":   base.get("model_id"),
+            "prefill_paired_t": paired_t(pre, base.get("prefill_per_iter") or []),
+            "decode_paired_t":  paired_t(dec, base.get("decode_per_iter")  or []),
+        }
+    except Exception as exc:
+        paired = {"baseline_path": baseline_path, "error": str(exc)}
+
+out = {
     "model_id":          model_id,
     "n_iter":            len(pre),
     "warmups":           warmups,
@@ -185,5 +250,10 @@ print(json.dumps({
     "prefill_per_iter":  pre,
     "decode_per_iter":   dec,
     "cooldown_s":        cooldown,
-}, indent=2))
+    "protocol":          {"adr": "ADR-014", "min_iters": 10},
+    "group_size_annot":  group_size_annot,
+}
+if paired is not None:
+    out["paired_t"] = paired
+print(json.dumps(out, indent=2))
 PY

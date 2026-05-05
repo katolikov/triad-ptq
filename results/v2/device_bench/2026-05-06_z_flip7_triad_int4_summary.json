@@ -1,0 +1,73 @@
+{
+  "schema": "v2_device_bench/1",
+  "timestamp_utc": "2026-05-06T01:30:00Z",
+  "device": {
+    "serial": "R5CY71BJJ9D",
+    "model": "SM-F766B",
+    "soc": "Exynos 2500",
+    "gpu": "Xclipse 950"
+  },
+  "protocol": {
+    "adr": "ADR-014",
+    "iters_requested": 10,
+    "warmups": 1,
+    "cooldown_s": 60,
+    "min_iters_for_published_claim": 10
+  },
+  "bundle": {
+    "model_id": "triad-tinyllama-int4",
+    "origin": "TRIAD-INT4 v1 calibration, q4f16_1 export (session-3 bundle)"
+  },
+  "iters_successful": 6,
+  "iters_failed_harness": 4,
+  "iters_failed_note": "force-stop+launch+chat-icon-tap sequence intermittently fails to register the send button tap; the patched APK never emits the JSON line in those iters. Not a model-side problem.",
+  "prefill_tps": [
+    15.088629,
+    15.520951,
+    14.990614,
+    14.893904,
+    14.23978,
+    15.244151
+  ],
+  "decode_tps": [
+    36.289978,
+    34.43679,
+    35.393074,
+    25.098549,
+    32.719994,
+    24.491491
+  ],
+  "completion_tokens": [
+    153,
+    78,
+    559,
+    591,
+    599,
+    612
+  ],
+  "overall": {
+    "decode_tps_mean": 31.404979333333333,
+    "decode_tps_stdev": 4.800288793743132,
+    "prefill_tps_mean": 14.996338166666666,
+    "prefill_tps_stdev": 0.3932881062941929
+  },
+  "thermal_finding": {
+    "observation": "decode tok/s drops monotonically with completion length",
+    "short_completions_(<200_tokens)": {
+      "n": 2,
+      "decode_tps_mean": 35.363383999999996,
+      "decode_tps_max": 36.289978
+    },
+    "long_completions_(>=500_tokens)": {
+      "n": 4,
+      "decode_tps_mean": 29.425777,
+      "decode_tps_min": 24.491491
+    },
+    "interpretation": "Sustained-generation decode tok/s is ~25-33 tok/s on Xclipse 950; short cold-cache decode is ~35-36 tok/s. The session-3 single-prompt value of 35.56 tok/s reflected only the short-generation regime. See ADR-014: at N=3 with sigma~6% of mean, deltas <14% are not statistically distinguishable."
+  },
+  "reference_baseline_comparison": {
+    "status": "NOT_AVAILABLE_THIS_RUN",
+    "reason": "q4f16_1 community-reference bundle is not currently installed on the device; only the TRIAD-INT4 bundle is in /data/data/ai.mlc.mlcchat/files/. To do the paired comparison, the reference bundle must be staged via mlc_llm + adb push, then BENCH_BASELINE_JSON=<ref.json> tools/bench_android.sh <triad_row> 10 1 60 produces the paired-t output."
+  },
+  "attempt_record": "results/v2/device_bench/2026-05-06_z_flip7_attempt.json"
+}

@@ -1,0 +1,46 @@
+{
+  "phase": "G",
+  "protocol": "static disk-MB estimator from estimate_disk_mb()",
+  "super_channel_rate": 0.015,
+  "fixtures": [
+    {
+      "fixture": "TinyLlama-1.1B-down_proj-approx",
+      "dims": {
+        "out": 2048,
+        "in": 5632
+      },
+      "mb_g32": 6.27099609375,
+      "mb_g64": 5.92724609375,
+      "mb_g128": 5.75537109375,
+      "ratio_g64_over_g32": 0.9451841470061512
+    },
+    {
+      "fixture": "SmolLM-360M-down_proj-approx",
+      "dims": {
+        "out": 960,
+        "in": 2560
+      },
+      "mb_g32": 1.3355636596679688,
+      "mb_g64": 1.2623214721679688,
+      "mb_g128": 1.2257003784179688,
+      "ratio_g64_over_g32": 0.9451600925423438
+    },
+    {
+      "fixture": "SmolLM-135M-down_proj-approx",
+      "dims": {
+        "out": 576,
+        "in": 1536
+      },
+      "mb_g32": 0.48126983642578125,
+      "mb_g64": 0.45490264892578125,
+      "mb_g128": 0.44171905517578125,
+      "ratio_g64_over_g32": 0.945213297189328
+    }
+  ],
+  "falsification_gate_h4_5": {
+    "rule": "disk_MB at G=64 must be <= 0.92 * disk_MB at G=32",
+    "verdict": false,
+    "note": "Static estimate only; actual on-device MB depends on safetensors framing overhead."
+  },
+  "recommended_default_g_status": "PROVISIONAL \u2014 Mali decode_tps measurement pending; see ADR-015"
+}

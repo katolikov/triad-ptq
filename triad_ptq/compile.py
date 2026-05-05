@@ -113,7 +113,7 @@ def compile_model(
     return_meta: bool = False,
     clip_search: bool = False,
     asymmetric_calib: bool = False,
-    asym_alpha: float = 0.5,
+    asym_alpha: "float | dict | callable" = 0.5,  # noqa: F722
     asym_exclude_suffixes: tuple = ("o_proj", "down_proj"),
 ):
     warn_no_silent_fallback()
@@ -324,21 +324,29 @@ def compile_model(
                 forward_fn=forward_fn or _default_forward,
                 a_device=a_dev,
             )
+            # Resolve the per-layer α. v2 (Phase F) passes a Mapping or a
+            # Callable for ρ-weighted scheduling; v1 default is a scalar.
+            if callable(asym_alpha):
+                alpha_lyr = float(asym_alpha(name))
+            elif isinstance(asym_alpha, dict):
+                alpha_lyr = float(asym_alpha.get(name, 0.5))
+            else:
+                alpha_lyr = float(asym_alpha)
             asym_meta[name] = asymmetry_strength(ga, H_pre=s.A)
             asym_meta[name]["bits"] = int(b)
             asym_meta[name]["layer_idx"] = repl_count
             asym_meta[name]["W_norm_pre"] = float(W.norm().item())
-            asym_meta[name]["alpha"] = float(asym_alpha)
+            asym_meta[name]["alpha"] = alpha_lyr
             W_orig_diag = W.detach().clone()
 
             W_aug = asymmetric_transfer(W, ga, percdamp=0.01)
             # Mix-in coefficient: W_new = (1-α)·W + α·W_aug.  α=1.0 is the
             # pure GPTAQ closed form; α=0 is no-op. Smaller α dampens the
             # transfer on the included layers without excluding them.
-            if asym_alpha == 1.0:
+            if alpha_lyr == 1.0:
                 W = W_aug
             else:
-                W = (1.0 - asym_alpha) * W_orig_diag + asym_alpha * W_aug
+                W = (1.0 - alpha_lyr) * W_orig_diag + alpha_lyr * W_aug
             del W_aug
             asym_meta[name]["W_norm_post"] = float(W.norm().item())
             asym_meta[name]["W_delta_rel"] = float(

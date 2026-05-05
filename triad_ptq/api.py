@@ -29,13 +29,62 @@ def optimize(
     asym_alpha: float = 0.5,
     asym_exclude_suffixes: tuple = ("o_proj", "down_proj"),
     return_meta: bool = False,
+    algorithm: str = "v1",
+    # ---------------- v2 (SPECTRA-Q) parameters; ignored when algorithm="v1"
+    rotation: str = "sign_perm",
+    super_channel_rate: float = 0.015,
+    gptaq_alpha_c: float = 1.0,
+    lwc_threshold_percentile: float = 75.0,
 ):
     """One-line PTQ entry point.
 
     See README "Quickstart" for usage. The function returns the same `model`
     instance with quantizable layers replaced in place by TriadLinear /
     TriadConv2d wrappers.
+
+    `algorithm`:
+      - "v1": ships TRIAD-PTQ v1.0.0 (production path, default).
+      - "v2": SPECTRA-Q. Currently a no-op stub during the Phase A migration
+        (raises NotImplementedError). Phases B–H land the real pipeline.
     """
+    if algorithm not in ("v1", "v2"):
+        raise ValueError(
+            f"optimize: unknown algorithm={algorithm!r} (expected 'v1' or 'v2')"
+        )
+    if algorithm == "v2":
+        from ._v2.pipeline import run_v2_pipeline
+
+        compile_kwargs = {
+            "super_weight_frac": super_weight_frac,
+            "bit_allocator": bit_allocator,
+            "cov_grid": cov_grid,
+            "target": target,
+            "time_budget_min": time_budget_min,
+            "n_calib": n_calib,
+            "device": device,
+            "a_device": a_device,
+            "forward_fn": forward_fn,
+            "output_fn": output_fn,
+            "rho_probe_n": rho_probe_n,
+            "progress": progress,
+            "clip_search": clip_search,
+            "return_meta": return_meta,
+        }
+        cal_list = list(calibration) if calibration is not None else []
+        m, v2_meta = run_v2_pipeline(
+            model,
+            calibration=cal_list,
+            bits=bits,
+            group_size=group_size,
+            rotation=rotation,
+            super_channel_rate=super_channel_rate,
+            gptaq_alpha_c=gptaq_alpha_c,
+            asymmetric_calib=asymmetric_calib,
+            lwc_threshold_percentile=lwc_threshold_percentile,
+            compile_kwargs=compile_kwargs,
+        )
+        return (m, v2_meta) if return_meta else m
+
     from .compile import compile_model
 
     return compile_model(
