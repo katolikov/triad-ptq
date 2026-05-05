@@ -24,6 +24,7 @@ def optimize(
     output_fn=None,
     rho_probe_n: int = 4,
     progress: bool = True,
+    clip_search: bool = False,
 ):
     """One-line PTQ entry point.
 
@@ -50,4 +51,5 @@ def optimize(
         output_fn=output_fn,
         rho_probe_n=rho_probe_n,
         progress=progress,
+        clip_search=clip_search,
     )

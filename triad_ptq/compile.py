@@ -108,6 +108,7 @@ def compile_model(
     rho_probe_n: int = 4,
     progress: bool = True,
     return_meta: bool = False,
+    clip_search: bool = False,
 ):
     warn_no_silent_fallback()
     dev = torch.device(device) if device else best_device()
@@ -322,6 +323,7 @@ def compile_model(
             bits=int(b),
             group_size=group_size,
             actorder=False,
+            clip_search=clip_search,
         )
         del H_prime
 
