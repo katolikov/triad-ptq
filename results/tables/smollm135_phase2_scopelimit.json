@@ -1,0 +1,32 @@
+[
+  {
+    "label": "TRIAD-INT4 baseline",
+    "ppl": 21.149352,
+    "calib_sec": 234.7,
+    "asym": false,
+    "alpha": null,
+    "n_calib": 8,
+    "eval_tokens": 16384,
+    "delta_vs_baseline": 0.0
+  },
+  {
+    "label": "TRIAD-INT4 + asym (excl o_proj+down_proj, alpha=1.0)",
+    "ppl": 22.033260,
+    "calib_sec": 900.6,
+    "asym": true,
+    "alpha": 1.0,
+    "n_calib": 8,
+    "eval_tokens": 16384,
+    "delta_vs_baseline": 0.884
+  },
+  {
+    "label": "TRIAD-INT4 + asym (excl o_proj+down_proj, alpha=0.5) -- WINNER",
+    "ppl": 20.626716,
+    "calib_sec": 909.3,
+    "asym": true,
+    "alpha": 0.5,
+    "n_calib": 8,
+    "eval_tokens": 16384,
+    "delta_vs_baseline": -0.523
+  }
+]

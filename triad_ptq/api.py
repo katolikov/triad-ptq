@@ -25,6 +25,10 @@ def optimize(
     rho_probe_n: int = 4,
     progress: bool = True,
     clip_search: bool = False,
+    asymmetric_calib: bool = False,
+    asym_alpha: float = 0.5,
+    asym_exclude_suffixes: tuple = ("o_proj", "down_proj"),
+    return_meta: bool = False,
 ):
     """One-line PTQ entry point.
 
@@ -52,4 +56,8 @@ def optimize(
         rho_probe_n=rho_probe_n,
         progress=progress,
         clip_search=clip_search,
+        asymmetric_calib=asymmetric_calib,
+        asym_alpha=asym_alpha,
+        asym_exclude_suffixes=asym_exclude_suffixes,
+        return_meta=return_meta,
     )

@@ -44,12 +44,15 @@ from rich.console import Console
 from .core.allocator import allocate_bits, uniform_bits
 from .core.calibration import (
     LayerStats,
+    _default_forward,
     attach_rho,
     collect_input_stats,
     estimate_rho,
     quantizable_modules,
 )
 from .core.gptq_solver import gptq_quantize_layer
+from .core.gptaq_asym import asymmetric_transfer, asymmetry_strength
+from .core.gptaq_capture import collect_layer_grams
 from .core.grid import compute_grid
 from .core.modules import TriadConv2d, TriadLinear
 from .core.quantize import _dequantize, quantize_grouped
@@ -109,6 +112,9 @@ def compile_model(
     progress: bool = True,
     return_meta: bool = False,
     clip_search: bool = False,
+    asymmetric_calib: bool = False,
+    asym_alpha: float = 0.5,
+    asym_exclude_suffixes: tuple = ("o_proj", "down_proj"),
 ):
     warn_no_silent_fallback()
     dev = torch.device(device) if device else best_device()
@@ -122,6 +128,23 @@ def compile_model(
     model.to(dev).eval()
     for p in model.parameters():
         p.requires_grad_(False)
+
+    # GPTAQ Phase-2: keep an immutable FP16 deepcopy of the original model so
+    # we can compute per-layer cross-Grams C = E[X̃ᵀ X_post] during the
+    # streaming GPTQ loop. We do this BEFORE any layer replacement.
+    model_fp16_ref: nn.Module | None = None
+    if asymmetric_calib:
+        import copy as _copy
+        if progress:
+            console.log("  asymmetric_calib=True → cloning FP16 reference model "
+                        "(memory ≈ 2× model size)")
+        model_fp16_ref = _copy.deepcopy(model)
+        model_fp16_ref.eval()
+        for p in model_fp16_ref.parameters():
+            p.requires_grad_(False)
+        # FP16 reference can stay on the same compute device — it just runs
+        # forward passes alongside the rolling-quant model.
+        model_fp16_ref.to(dev)
 
     layers = quantizable_modules(model)
     if not layers:
@@ -249,16 +272,114 @@ def compile_model(
     # ---- Step D+E+F (pass 2): per-layer streaming GPTQ + module replace ----
     repl_count = 0
     layer_grid_meta: dict[str, dict] = {}
+    asym_meta: dict[str, dict] = {}
     t3 = time.perf_counter()
     for (name, mod), b in zip(layers, alloc.bits):
         s = stats[name]
         W = _module_weight2d(mod).to(dev).float()
 
+        # ---- Phase-2 asymmetric transfer (GPTAQ) -------------------------
+        # Before TRIAD's basis change:
+        #   1. capture per-layer cascade Grams H_post = XᵀX, C = X̃ᵀX,
+        #   2. apply asymmetric weight transfer  W_aug = W · C · H_post⁻¹
+        #      (closed-form optimum of  ‖X̃ Wᵀ − X W_qᵀ‖²),
+        #   3. **swap the layer's effective Hessian to H_post** so the
+        #      downstream TRIAD basis change + GPTQ rounding all work in
+        #      the post-cascade frame. This is essential — the closed-
+        #      form transfer is optimal only if the rounding error is
+        #      measured under H_post; using the FP16 H_pre here was the
+        #      root cause of the SmolLM PPL regression in the first
+        #      Phase-2 attempt (see ADR-010 "Smoke validation").
+        H_layer_override: torch.Tensor | None = None
+        # Diagnostic: keep a copy of the original W for per-layer reporting
+        # of (1) ‖W_aug−W‖/‖W‖ (= asymmetric transfer magnitude) and
+        # (2) ‖X̃ Wᵀ − X W_qᵀ‖ / ‖X̃ Wᵀ‖ measured against the held-out
+        # cascade Grams. Both are recorded in `asym_meta[name]` and
+        # surfaced via return_meta. Only kept when asymmetric_calib so
+        # the default path has zero overhead.
+        W_orig_diag: torch.Tensor | None = None
+        ga_diag = None  # capture for post-quant reconstruction error below
+
+        # Phase-2 scope-limit: layers whose name ends with one of
+        # `asym_exclude_suffixes` skip the asymmetric transfer entirely.
+        # Diagnostics on SmolLM-135M (results/tables/smollm135_gptaq_smoke.json,
+        # 2026-05-05) showed the residual-stream WRITER layers (o_proj +
+        # down_proj) account for 95%+ of the per-layer reconstruction error
+        # under the H_post Hessian: their cascade input is structurally
+        # different from FP16 (not a small perturbation), so the closed-
+        # form W·C·H⁻¹ over-corrects and inflates rows by up to 28×.
+        is_asym_layer = (
+            asymmetric_calib
+            and isinstance(mod, nn.Linear)
+            and not any(name.endswith(suf) for suf in asym_exclude_suffixes)
+        )
+
+        if is_asym_layer:
+            ga = collect_layer_grams(
+                model_quant=model,
+                model_fp16=model_fp16_ref,
+                layer_name=name,
+                batches=cal_list,
+                device=dev,
+                forward_fn=forward_fn or _default_forward,
+                a_device=a_dev,
+            )
+            asym_meta[name] = asymmetry_strength(ga, H_pre=s.A)
+            asym_meta[name]["bits"] = int(b)
+            asym_meta[name]["layer_idx"] = repl_count
+            asym_meta[name]["W_norm_pre"] = float(W.norm().item())
+            asym_meta[name]["alpha"] = float(asym_alpha)
+            W_orig_diag = W.detach().clone()
+
+            W_aug = asymmetric_transfer(W, ga, percdamp=0.01)
+            # Mix-in coefficient: W_new = (1-α)·W + α·W_aug.  α=1.0 is the
+            # pure GPTAQ closed form; α=0 is no-op. Smaller α dampens the
+            # transfer on the included layers without excluding them.
+            if asym_alpha == 1.0:
+                W = W_aug
+            else:
+                W = (1.0 - asym_alpha) * W_orig_diag + asym_alpha * W_aug
+            del W_aug
+            asym_meta[name]["W_norm_post"] = float(W.norm().item())
+            asym_meta[name]["W_delta_rel"] = float(
+                (W - W_orig_diag).norm().div(W_orig_diag.norm().clamp_min(1e-12)).item()
+            )
+            # Per-row max-abs ratio: detects W_aug "magnitude explosion"
+            # in a few rows (the suspected INT4 grid-saturation source).
+            row_norm_pre = W_orig_diag.abs().amax(dim=1)
+            row_norm_post = W.abs().amax(dim=1)
+            row_ratio = (row_norm_post / row_norm_pre.clamp_min(1e-12)).cpu()
+            asym_meta[name]["row_max_ratio_p50"] = float(row_ratio.median().item())
+            asym_meta[name]["row_max_ratio_p99"] = float(row_ratio.quantile(0.99).item())
+            asym_meta[name]["row_max_ratio_max"] = float(row_ratio.max().item())
+
+            # Swap to H_post for the rest of the pipeline. We keep a
+            # plain tensor reference here — `s.A` is consumed downstream
+            # and must continue to behave like a (d_in × d_in) Gram.
+            H_layer_override = ga.H_post.to(s.A.device).to(s.A.dtype).contiguous()
+            ga_diag = ga  # keep for post-quant diag below
+            # Don't free yet — need ga.H_post / ga.C for reconstruction-MSE
+            # diagnostic AFTER the qweight is built.
+        elif asymmetric_calib and isinstance(mod, nn.Linear):
+            # Excluded by scope-limit: record that we explicitly skipped.
+            asym_meta[name] = {
+                "scope_excluded": True,
+                "layer_idx": repl_count,
+                "bits": int(b),
+            }
+
+        # The "effective Hessian" used by the grid + H' build below. In the
+        # default code path this is the FP16 Gram s.A. In Phase-2 asymmetric
+        # mode it is the post-cascade Gram H_post we just collected above.
+        A_eff_source = (
+            H_layer_override if H_layer_override is not None else s.A
+        )
+
         # ---- D: grid (analytic eigh + closed-form beta) ------------------
         if cov_grid == "analytic":
             # Bring this one layer's A to compute device. eigh is done on CPU
             # via safe_eigh inside compute_grid (it pulls A.cpu()).
-            A_layer = s.A.to(dev)
+            A_layer = A_eff_source.to(dev)
             grid = compute_grid(W, A_layer)
             del A_layer
             if grid.beta_star <= 1e-4:
@@ -288,8 +409,8 @@ def compile_model(
             H_prime = torch.diag(Hp_diag)
             del Hp_diag
         else:
-            # use original A (pulled to compute device just for this layer)
-            H_prime = s.A.to(dev).float()
+            # use original A (or H_post override) on compute device for this layer
+            H_prime = A_eff_source.to(dev).float()
 
         # Free the per-layer A on a_device once we've consumed it. Setting
         # .A to a zero-byte tensor breaks any later access (intentional --
@@ -336,6 +457,49 @@ def compile_model(
         )
         del H_prime
 
+        # ---- Phase-2 diagnostic: per-layer reconstruction-error in
+        # the original (un-rotated) basis, against both the FP16 target
+        # (X̃ Wᵀ) and the asymmetric target (X̃ W_origᵀ vs X W_qᵀ). We
+        # only do this for asymmetric_calib runs since (a) it needs
+        # H_post / C / W_orig captured above, and (b) the regression
+        # diagnosis is the only consumer.
+        if is_asym_layer and ga_diag is not None:
+            # Dequantize the rotated qweight back to fp32 in the W' basis.
+            W_dq_prime = _dequantize(
+                qweight.q, qweight.scales, qweight.zeros, qweight.group_size
+            )
+            # Undo TRIAD's basis to get W_q in the original basis.
+            if U is not None and Lam_b is not None:
+                W_q_orig = (W_dq_prime / Lam_b.unsqueeze(0)) @ U.t()
+            else:
+                W_q_orig = W_dq_prime
+            del W_dq_prime
+
+            H_post = ga_diag.H_post.to(W_q_orig.device).to(torch.float32)
+            C_eff = ga_diag.C.to(W_q_orig.device).to(torch.float32)
+            W0 = W_orig_diag.to(W_q_orig.device).to(torch.float32) if W_orig_diag is not None else W_q_orig
+
+            # Asymmetric loss components:
+            #   tr(W0 H̃ W0ᵀ) − 2 tr(W0 Cᵀ W_qᵀ) + tr(W_q H_post W_qᵀ)
+            # Use H_post-trace as a proxy for the H̃ scale (we don't have
+            # H̃ here without re-running; use s_A_trace from earlier).
+            term_pred = float((W_q_orig @ H_post * W_q_orig).sum().item())
+            term_cross = float((W0 @ C_eff.t() * W_q_orig).sum().item())
+            asym_meta[name]["asym_recon_term_pred"] = term_pred
+            asym_meta[name]["asym_recon_term_cross"] = term_cross
+            asym_meta[name]["asym_recon_loss_proxy"] = term_pred - 2.0 * term_cross
+
+            # Symmetric (W0-only) reconstruction error against H_post
+            # (would have been the standard GPTQ objective):
+            delta = (W0 - W_q_orig)
+            sym_err = float((delta @ H_post * delta).sum().item())
+            asym_meta[name]["sym_recon_err_under_Hpost"] = sym_err
+
+            del W_q_orig, H_post, C_eff, ga_diag, delta
+            ga_diag = None
+            W_orig_diag = None
+            _empty_cache(dev)
+
         # Compute SW residuals in W_prime basis
         if sw_rows is not None and sw_rows.numel() > 0:
             W_dq = _dequantize(qweight.q, qweight.scales, qweight.zeros, qweight.group_size)
@@ -379,11 +543,18 @@ def compile_model(
             f"{time.perf_counter()-t3:.1f}s (total {time.perf_counter()-t0:.1f}s)"
         )
 
+    # Free the FP16 reference now that the streaming loop is done.
+    if model_fp16_ref is not None:
+        del model_fp16_ref
+        _empty_cache(dev)
+
     if return_meta:
         return model, {
             "alloc": alloc,
             "n_layers": len(layers),
             "grid": layer_grid_meta,
             "super_weights": {n: int(s.rows.numel()) for n, s in sw_global.items()},
+            "asymmetric_calib": asymmetric_calib,
+            "asymmetry_per_layer": asym_meta,
         }
     return model
