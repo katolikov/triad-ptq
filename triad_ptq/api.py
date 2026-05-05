@@ -52,14 +52,38 @@ def optimize(
             f"optimize: unknown algorithm={algorithm!r} (expected 'v1' or 'v2')"
         )
     if algorithm == "v2":
-        # Phase A is plumbing-only: the v2 pipeline is intentionally an explicit
-        # NotImplementedError rather than a silent fall-through to v1, so callers
-        # cannot accidentally believe they got v2 numbers from a v1 run.
-        raise NotImplementedError(
-            "algorithm='v2' (SPECTRA-Q) is not yet implemented — Phase A "
-            "(plumbing) has landed; Phases B–H will populate the v2 pipeline. "
-            "Pass algorithm='v1' to use the current production path."
+        from ._v2.pipeline import run_v2_pipeline
+
+        compile_kwargs = {
+            "super_weight_frac": super_weight_frac,
+            "bit_allocator": bit_allocator,
+            "cov_grid": cov_grid,
+            "target": target,
+            "time_budget_min": time_budget_min,
+            "n_calib": n_calib,
+            "device": device,
+            "a_device": a_device,
+            "forward_fn": forward_fn,
+            "output_fn": output_fn,
+            "rho_probe_n": rho_probe_n,
+            "progress": progress,
+            "clip_search": clip_search,
+            "return_meta": return_meta,
+        }
+        cal_list = list(calibration) if calibration is not None else []
+        m, v2_meta = run_v2_pipeline(
+            model,
+            calibration=cal_list,
+            bits=bits,
+            group_size=group_size,
+            rotation=rotation,
+            super_channel_rate=super_channel_rate,
+            gptaq_alpha_c=gptaq_alpha_c,
+            asymmetric_calib=asymmetric_calib,
+            lwc_threshold_percentile=lwc_threshold_percentile,
+            compile_kwargs=compile_kwargs,
         )
+        return (m, v2_meta) if return_meta else m
 
     from .compile import compile_model
 

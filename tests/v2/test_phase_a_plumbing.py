@@ -89,9 +89,16 @@ def test_optimize_unknown_algorithm_raises() -> None:
         triad_api.optimize(model, algorithm="v3")
 
 
-def test_optimize_v2_raises_not_implemented() -> None:
+def test_optimize_v2_dispatches_to_v2_pipeline() -> None:
+    """After Phase H lands, algorithm='v2' routes to run_v2_pipeline.
+
+    A bare nn.Linear is not an HF Llama-family model, so the v2 pipeline
+    will fail at the rotation step with a TypeError pointing at the
+    missing `model.layers` attribute. That's the right *shape* of
+    failure — it confirms the dispatch reached the v2 path.
+    """
     model = nn.Linear(8, 8)
-    with pytest.raises(NotImplementedError, match="SPECTRA-Q"):
+    with pytest.raises(TypeError, match="not an HF Llama-family model"):
         triad_api.optimize(model, algorithm="v2", calibration=[])
 
 
