@@ -1,0 +1,56 @@
+{
+  "phase": "E",
+  "protocol": "pack-unpack round-trip; per-group symmetric quantize at G=64",
+  "fixtures": [
+    {
+      "shape": [
+        256,
+        512
+      ],
+      "rate": 0.015,
+      "group_size": 64,
+      "n_super": 4,
+      "mse_int4": 0.00046353781362995505,
+      "mse_int8": 1.6642834452795796e-06,
+      "mse_ratio_int4_over_int8": 278.52095443519016
+    },
+    {
+      "shape": [
+        512,
+        1024
+      ],
+      "rate": 0.015,
+      "group_size": 64,
+      "n_super": 8,
+      "mse_int4": 0.0004622686537913978,
+      "mse_int8": 1.4588620160793653e-06,
+      "mse_ratio_int4_over_int8": 316.86934658407705
+    },
+    {
+      "shape": [
+        576,
+        1536
+      ],
+      "rate": 0.015,
+      "group_size": 64,
+      "n_super": 9,
+      "mse_int4": 0.00046474894043058157,
+      "mse_int8": 1.5133342685658135e-06,
+      "mse_ratio_int4_over_int8": 307.10263428516953
+    },
+    {
+      "shape": [
+        256,
+        512
+      ],
+      "rate": 0.05,
+      "group_size": 64,
+      "n_super": 13,
+      "mse_int4": 0.00046458779252134264,
+      "mse_int8": 1.601312078491901e-06,
+      "mse_ratio_int4_over_int8": 290.1294499438776
+    }
+  ],
+  "acceptance": "INT8 super-channels have lower MSE than INT4 non-super (16x finer grid)",
+  "acceptance_pass": true
+}
