@@ -1,10 +1,9 @@
 {
-  "output_dir": "/tmp/triad-tinyllama-int4-mlc",
-  "shard": "/tmp/triad-tinyllama-int4-mlc/params_shard_0.bin",
-  "n_quant_layers": 155,
-  "n_skipped_conv_layers": 0,
-  "skipped_conv": [],
-  "shard_size_mb": 777.76896,
-  "fold_U": true,
-  "fold_super_weights": true
+  "hf_safetensors_dir": "/tmp/triad-tinyllama-int4-hf",
+  "mlc_bundle_dir": "/tmp/triad-tinyllama-int4-mlc",
+  "mlc_bundle_size_mb": 621.856699,
+  "compile_device": "android",
+  "tar_path": "/tmp/triad-tinyllama-int4-mlc/lib/triad-tinyllama-android.tar",
+  "tar_present": true,
+  "hf_safetensors_size_mb": 2200.119664
 }
