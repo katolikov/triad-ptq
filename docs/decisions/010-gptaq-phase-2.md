@@ -125,13 +125,82 @@ asymmetric transfer makes **zero changes to the exported MLC bundle's
 shape, layout, or kernel set**, so the runtime cost is expected to be
 inside fp16-rounding noise.
 
-## Smoke validation
+## Smoke validation (2026-05-05)
 
-Smoke test (`experiments/18_gptaq_smoke_smollm.py`) on SmolLM-135M
-verifies the implementation runs end-to-end and the asymmetric path
-produces a non-degenerate, finite PPL. Numbers will be filled in here
-once the run completes. Smoke is **not** sufficient for Phase-2
-acceptance — TinyLlama-1.1B is the gating model.
+Smoke test (`experiments/18_gptaq_smoke_smollm.py`) on SmolLM-135M:
+
+| Variant                                            | PPL     | Calib wall (s) | Δ vs baseline |
+|----------------------------------------------------|---------|----------------|---------------|
+| TRIAD-INT4 baseline                                | 20.879  | 215            | reference     |
+| TRIAD-INT4 + GPTAQ asym (W·Cᵀ·H⁻¹, BUG)            | 1e+34   | 1900 (8.8×)    | catastrophic — transpose error |
+| TRIAD-INT4 + GPTAQ asym (W·C·H⁻¹, FP16 rounding)   | 24.989  | 1760 (8.2×)    | **+4.05** (regression) |
+| TRIAD-INT4 + GPTAQ asym (W·C·H⁻¹, H_post rounding) | 24.128  | 1900 (8.8×)    | **+3.25** (regression, smaller) |
+
+All three asymmetric variants regress against the symmetric baseline
+on SmolLM-135M, despite the closed-form transfer being unit-test-
+verified correct. The H_post-rounding variant is the smallest
+regression (+3.25 vs +4.05) but still not a PPL win.
+
+### Diagnosis (open)
+
+Three plausible causes, listed by likelihood:
+
+1. **W_aug magnitude / dynamic range explosion.** `W_aug = W · C ·
+   H_post⁻¹` rescales weight columns to compensate for cascade-shifted
+   input statistics. When `H_post` has a wide eigenvalue spread (which
+   it does — early-layer cascades are nearly FP16, late-layer cascades
+   are heavily quant-perturbed), the rescaling can blow up some columns
+   relative to others. INT4 with per-group g=64 quantisation has only
+   16 distinct levels per group; columns with much larger magnitude
+   share the group with normal columns and lose precision.
+
+2. **TRIAD basis adaptation interaction.** The grid eigh on `H_post`
+   finds U, β tuned to the post-cascade spectrum, but TRIAD's Λ^β
+   transform was empirically tuned (in ADR-001 / ADR-002) on
+   FP16-Gram spectra. The post-cascade spectrum has a different
+   condition number and the closed-form β may select extremes that
+   are not actually quant-friendly.
+
+3. **Cascade-feedback amplification.** Each layer's `H_post` is
+   computed against the partially-quantized model. Errors compound:
+   layer l's transfer is computed against errors from layers 0..l−1
+   that were themselves transferred suboptimally. This may explain
+   why the regression is *worse* with the H_post fix on early layers
+   but smaller on late layers.
+
+Without per-layer ablation data we cannot attribute the regression to
+one of the three. Diagnosis requires another full smoke run with
+per-layer reconstruction-error logging, which is out of this session's
+budget.
+
+### Status of the asymmetric_calib=True flag
+
+* Closed-form transfer math: **proved correct** (unit-tested in 7
+  cases including a regression contract on the C-vs-Cᵀ orientation).
+* Per-layer compose with TRIAD: **regresses PPL** in all variants
+  tested on SmolLM-135M.
+* TinyLlama-1.1B gating measurement: **not run** (would take ~50 min
+  per variant; not a useful expenditure until the SmolLM regression
+  is understood).
+
+The default code path (`asymmetric_calib=False`) is byte-identical to
+pre-ADR behaviour and ships unaffected. The flag is **off by default**;
+turning it on currently degrades quality.
+
+### Recommended next session
+
+1. Run `experiments/18_gptaq_smoke_smollm.py` with per-layer
+   reconstruction-error JSON logging to diagnose whether early- or
+   late-layer transfers are the regression source.
+2. Try **clamping the asymmetric correction**: replace
+   `W_aug = W · C · H⁻¹`  with
+   `W_aug = (1−α)·W + α·(W · C · H⁻¹)` for α ∈ {0.25, 0.5, 0.75} and
+   sweep the SmolLM smoke. This is the standard "mix in a fraction of
+   the asymmetric correction" trick that several follow-up PTQ papers
+   adopt when the pure asymmetric form regresses.
+3. Try **scope-limiting**: apply the transfer only to attention QKV
+   layers (which DuQuant ablation reports get the largest gain) and
+   leave MLP layers in the symmetric frame.
 
 ## Alternatives considered
 

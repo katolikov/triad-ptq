@@ -1,152 +1,105 @@
-# TRIAD-PTQ Exynos session status
+# TRIAD-PTQ Exynos session 3 — STATUS
 
-Wall clock:  Session-1 ~2h15m + Session-2 ~1h30m  ≈ 3h45m total
-Outcome:     **success** (3/3 acceptance criteria met on real device)
-
-## Headline numbers
-
-|                                    | value     | acceptance       | status |
-|------------------------------------|-----------|------------------|--------|
-| WikiText-2 PPL, FP16 (M1, CPU)     | 10.882    | (anchor)         |        |
-| WikiText-2 PPL, TRIAD-INT4 (M1)    | 11.477    | ≤ FP16 + 1.0     | **PASS** (+0.595) |
-| Decode tok/s, TRIAD-INT4, Xclipse  | **37.7**  | ≥ 25             | **PASS** |
-| Peak GPU memory (Graphics, dumpsys)| **789 MB**| ≤ 1200 MB        | **PASS** |
-| Total PSS during decode            | 1024 MB   | (informational)  |        |
-| Reference q4f16_1 decode tok/s     | 42.9      | (community baseline) | TRIAD ~88% of ref |
-| MLC q4f16_1 bundle size (disk)     | 593 MB    | (informational)  |        |
-| Calibration peak MPS (driver hwm)  | 12.19 GB  | "no OOM on M1"   | PASS   |
-
-PPL eval window is 4088 tokens / seq=512 / CPU-fp32 dequantised
-forward; on-device PPL not measured separately because the MLC
-q4f16_1 shader is numerically equivalent to dequant-then-fp16-matmul
-within fp16 rounding (the same shader path the reference uses).
-
-## Completed (this session, continuation)
-
-- **Phase 1.1 — MLC nightly + compile.**  Installed
-  `mlc-llm-nightly-cpu==0.20.dev162` + `mlc-ai-nightly-cpu==0.20.dev990`
-  in `/tmp/mlc-venv/`. Compiled both bundles for `--device android`
-  (= OpenCL on `aarch64-linux-android`). Both `.tar` outputs ~498 KB
-  (kernel-only; weights are separate).
-  - ADR-002 noted Vulkan path; in practice MLC's `android:generic`
-    preset uses OpenCL, and Xclipse 950 ships
-    `libOpenCL.so + libSGPUOpenCL.so` ICD, so the OpenCL path works
-    without modification. Vulkan-Android is not in MLC's preset list.
-
-- **Phase 4 (revised) — TRIAD HF safetensors → mlc_llm convert_weight.**
-  ADR-004 documents the schema mismatch: the original direct-export
-  bundle wrote `ndarray-cache.json` + single 778 MB shard +
-  unfused-QKV record names, none of which match MLC's canonical
-  `tensor-cache.json` + 24-shard + fused-`qkv_proj` layout. New path
-  in `triad_ptq/export/hf_safetensors.py` materialises TRIAD-folded
-  weights as HF safetensors, then `experiments/14_export_mlc.py`
-  invokes `mlc_llm gen_config` + `convert_weight` + `compile` as
-  subprocesses to produce the canonical bundle (24 shards, 593 MB).
-
-- **Phase 1.2 — Custom MLCChat APK.**  ADR-005: the prebuilt
-  `mlc-chat.apk` from `binary-mlc-llm-libs/Android-09262024` only
-  links 5 system libraries and our `llama_q4f16_1_<our-hash>` is
-  not among them. Built from source:
-  1. Sparse-clone of `mlc-ai/mlc-llm` HEAD with `3rdparty/tvm` +
-     `3rdparty/xgrammar` submodules (~400 MB).
-  2. `mlc_llm package` from `android/MLCChat/` with our
-     `mlc-package-config.json`. Required env vars: `ANDROID_NDK`,
-     `TVM_NDK_CC` (NDK clang aarch64-android24), `TVM_SOURCE_DIR`,
-     `MLC_LLM_SOURCE_DIR`, `JAVA_HOME=/tmp/jdk21/...`.
-     Output: `dist/lib/mlc4j/output/arm64-v8a/libtvm4j_runtime_packed.so`
-     with TRIAD's system_lib statically linked.
-  3. Gradle `assembleDebug` (after one rebuild because mlc4j's
-     `tvm4j_core.jar` was originally compiled with JDK 24, which D8
-     rejects; rebuilt under JDK 21).
-  4. **Single-line patch** to `AppViewModel.kt`:
-     `appDirFile = application.filesDir` instead of
-     `getExternalFilesDir("")`. Samsung One UI 7 hardens scoped
-     storage so `adb push` to `/sdcard/Android/data/<pkg>/files/`
-     leaves files invisible to the app's process. Switching to
-     internal storage (`/data/data/<pkg>/files/`) lets `run-as cp`
-     stage the bundles. (Patch confined to one line; documented in
-     ADR-005.)
-  5. `adb install --no-streaming` (after `pm setting global
-     verifier_verify_adb_installs 0` to bypass Samsung Auto Blocker
-     verification of the debug-signed APK).
-
-- **Phase 5 — Device bench.**
-  Both bundles staged in `/data/data/ai.mlc.mlcchat/files/<modelId>/`.
-  Drove a 28-token prompt through the in-app chat UI for each model
-  and read the prefill / decode tok/s line that MLCChat prints above
-  each response. Captured `dumpsys meminfo` immediately after, while
-  the model was still resident.
-
-  ```
-  TRIAD-INT4:        prefill 18.2 tok/s, decode 37.7 tok/s
-                     Graphics 789 MB, Total PSS 1024 MB
-  Ref q4f16_1:       prefill 25.2 tok/s, decode 42.9 tok/s
-                     Graphics 803 MB, Total PSS 1021 MB
-  ```
-
-  Both bundles share the *same compiled model lib*
-  (system_lib_prefix `llama_q4f16_1_6429f5e250a1cd87923dcc0ba823fe8e`)
-  — only param values differ — so the throughput delta (~12%)
-  attributes to weight-distribution differences after TRIAD's
-  U-rotation + sparse fold making cache access slightly less
-  predictable. Both well above the 25 tok/s acceptance bar.
-
-- **Phase 5.5 — New tests.** Added 4 layout/compile-artefact tests
-  in `tests/test_mlc_export_layout.py`. Full suite **25/25 green**
-  (was 21/21 baseline).
-
-- **Phase 6 (NPU INT4 path).**  Skipped per ADR-002 — not present
-  on stock Galaxy Z Flip7 retail build.
-
-## Final comparison table
-
-```
-Method                              Bits   WT2-PPL  Tok/s   GPU-MB   Disk-MB
-FP16 (CPU, matched window)           16    10.882    —        —         —
-MLC q4f16_1 (community, on-device)    4    n/a      42.9    803       593
-TRIAD-INT4 (this work, on-device)     4    11.477   37.7    789       593
-
-Acceptance:
-  PPL  ≤ FP16 + 1.0          +0.595           PASS
-  Decode tok/s ≥ 25          37.7             PASS
-  Peak GPU ≤ 1.2 GB          789 MB Graphics  PASS
-```
-
-Full table: `results/exynos_comparison.md`.
+Wall-clock used: ~3 h of an 8-h budget.
+Outcome: **mixed** — Phase 0 fully shipped, Phase 1/4 implementation +
+tests shipped, Phase 2 implementation regressed twice and a third fix
+is in flight at session close.
 
 ## Branches
 
-| Branch                          | State                | Last commit |
-|---                              |---                   |---          |
-| `feat/exynos-baseline`          | local (push pending) | `95e0226` Phase 0 + ADR-003 |
-| `feat/exynos-cholesky-fix`      | local (push pending) | `6bbe816` Phase 2 + smoke results |
-| `feat/exynos-calib-tinyllama`   | local (push pending) | `573fe33` Phase 3 calib + checkpoint |
-| `feat/exynos-mlc-export`        | local (push pending) | `95acc07` Phase 4 MLC q4f16_1 |
-| `feat/exynos-bench`             | local (push pending) | `8375826` Phase 5 partial scaffold |
-| `feat/exynos-mlc-compile`       | local (push pending) | `9368488` ADR-005 + custom APK build |
-| `feat/exynos-bench-device`      | local (push pending) | new `Phase 5: device bench TRIAD vs ref` |
+| Branch                     | Last commit (local)                              | Pushed? |
+|----------------------------|--------------------------------------------------|---------|
+| `feat/phase-0-probe`       | `ff44873` ADR-009: defer 0.4 baseline; runner gap| no      |
+| `feat/phase-1-soa`         | `57c6cc1` Phase 1: --quantization {q4f16_0,_1,both} | no   |
+| `feat/phase-2-gptaq`       | (in flight — H_post Hessian-swap fix; smoke re-running) | no   |
+| `feat/phase-4-r1`          | `<commit pending>` Phase 4 R1 Hadamard          | no      |
 
-Each branch is a strict superset of the previous one (linear chain).
-With all 3/3 acceptance criteria met and 25/25 tests green, the
-session-prompt push criteria are satisfied — pushing all 7 branches
-to `origin` and opening one draft PR each.
+Per H1 + the autonomous-session prompt: **no merge to main**, **no push
+to remote**. The user reviews and merges by hand, then explicitly
+authorises a push.
 
-## ADRs added across both sessions
+## Headline numbers
+
+|                                    | value                | acceptance       | status |
+|------------------------------------|----------------------|------------------|--------|
+| Phase-0 probe artefacts on disk    | 6 835 + 1 572 bytes  | required         | **PASS** |
+| All Phase-0 capability Y/N answered | 6/6                 | required         | **PASS** |
+| TRIAD-INT4 baseline reproduced     | not measured         | within ±5%       | **DEFERRED — see ADR-009** |
+| Phase-2 SmolLM-135M smoke          | 20.88 base / 24.13 asym (H_post fix) | < baseline | **FAIL** — best variant still +3.25 regression |
+| Phase-2 TinyLlama calibration      | not run              | PPL ≤ 11.397     | **DEFERRED** |
+| Phase-4 forward cosine on TinyLlama | not run              | ≥ 0.9999         | **DEFERRED** (passes on tiny-block unit test) |
+| Phase-1 on-device decode tok/s     | not measured         | ≥ +1.5 vs q4f16_1 | **DEFERRED — runner gap** |
+
+## What shipped this session
+
+* **Phase 0** — `tools/{vk,cl}_probe`, NDK-27 cross-compiled, run on
+  device. `docs/probe/SUMMARY.md` answers the Phase-0 acceptance
+  checklist. Committed.
+* **Phase 1** — `experiments/14_export_mlc.py` accepts
+  `--quantization {q4f16_0, q4f16_1, both}` with per-format bundle
+  dirs. ADR-011. Committed.
+* **Phase 2 (regression — research-only)** — `triad_ptq/core/gptaq_asym.py`
+  (closed-form transfer + diagnostics, 138 LOC), `gptaq_capture.py`
+  (dual-model hook capture, 130 LOC), wiring in `compile.py` behind a
+  default-off `asymmetric_calib` flag. 7 unit tests green. Three SmolLM
+  smoke runs:
+    1. PPL=1e+34 — transpose bug, fixed.
+    2. PPL=24.99 vs 20.93 baseline — H_pre rounding mismatch, fixed.
+    3. PPL=24.13 vs 20.88 baseline — **still a regression** despite
+       H_post Hessian-swap landing.
+  See ADR-010 for the diagnosis (W_aug magnitude, β-grid mistune,
+  cascade-feedback) and the three filed follow-ups (per-layer logging,
+  α mix-in, scope-limit to QKV). The default `asymmetric_calib=False`
+  path is byte-identical to v0.2.0-alpha and ships unchanged.
+* **Phase 4** — `triad_ptq/core/rotate.py` (Sylvester Hadamard, random
+  signed Hadamard, RMSNorm fold, per-block + per-Llama R1 application;
+  273 LOC). 5 unit tests green including a tiny-block forward
+  equivalence round-trip with cos > 0.9999. ADR-012. Committed.
+
+## What did NOT ship
+
+* Phase 0.4 baseline reproduction (deferred, ADR-009).
+* All on-device measurements (deferred, runner gap, ADR-009).
+* Phase 2 TinyLlama gating measurement (deferred, ~50 min calib + 5 min
+  eval after the H_post fix smokes clean on SmolLM).
+* Phase 3, 5, 6, 7, 8 — not started.
+* The Pareto plot in `docs/figures/pareto-2026-05-05.png` was not
+  refreshed because no new on-device numbers exist.
+
+## ADRs added (continuing from prior 008)
 
 | ADR | Subject |
 |-----|---------|
-| 001 | Truncated eigh rejected (rank deficiency in W' = W·U·Λ^β) |
-| 002 | Exynos 2500 Xclipse 950 ≠ Mali — Vulkan path preserved (in practice OpenCL on Android) |
-| 003 | Phase 1 MLC source build deferred (then lifted in 005) |
-| 004 | MLC bundle schema mismatch — switch to HF safetensors → mlc_llm convert_weight |
-| 005 | Prebuilt MLCChat APK cannot load custom .tar — build from source |
+| 009 | Phase-0.4 deferred; runner gap |
+| 010 | Phase 2 GPTAQ asymmetric (impl + smoke regression + H_post fix proposal) |
+| 011 | Phase 1 q4f16_0 export option |
+| 012 | Phase 4 R1 Hadamard pre-rotation |
 
 ## Tests
 
 ```
 $ uv run pytest -q
-......................... (25 passed)
+.............s...........................                                [100%]
+41 passed, 1 skipped
 ```
 
-(21 baseline + 3 MLC export + 4 new layout/compile-artefact tests added
-in this session.)
+## Next 3 actions for the next session
+
+1. **Diagnose Phase-2 regression with per-layer logging.** Add a
+   per-layer `||W − W_aug|| / ||W||` and per-layer reconstruction-MSE
+   diagnostic in `compile_model` (gated by `asymmetric_calib=True`)
+   and re-run the SmolLM smoke. The hypothesis to falsify is "the
+   transfer over-corrects on cascade-stressed late layers". Filed in
+   ADR-010 as follow-up #1.
+2. **Run Phase 4 on TinyLlama** — `experiments/19_r1_rotate_tinyllama.py`
+   on CPU (~5 min). Expect cos > 0.9999. The R1 rotation is *
+   independent* of the Phase-2 regression (orthogonal weight transform
+   absorbed into FP16 weights, no calibration involvement). Once
+   verified, the rotated state_dict is the input to the next
+   calibration pass.
+3. **Build the device bench harness** — patch the custom MLCChat APK
+   to emit a JSON `{"prefill": …, "decode": …}` line over logcat per
+   generation. Then drive it from `tools/bench_android.sh` with
+   `adb shell input` + `logcat -s triad_bench:I`. This unblocks Phases
+   1, 3, 7 acceptance gates and the prompt's `prompt=128 / gen=128 /
+   N=5 / cooldown=60s` protocol.

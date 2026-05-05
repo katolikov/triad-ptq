@@ -1,0 +1,27 @@
+{
+  "model": "HuggingFaceTB/SmolLM-135M",
+  "results": [
+    {
+      "label": "TRIAD-INT4 (baseline)",
+      "asymmetric_calib": false,
+      "ppl": 20.87896016024097,
+      "n_tokens": 16368,
+      "calib_sec": 215.28240829100832,
+      "eval_sec": 4.605857958900742,
+      "n_layers": 211,
+      "n_asym_layers": 0
+    },
+    {
+      "label": "TRIAD-INT4 + GPTAQ asym",
+      "asymmetric_calib": true,
+      "ppl": 24.127997251437208,
+      "n_tokens": 16368,
+      "calib_sec": 1900.5615108329803,
+      "eval_sec": 4.105104999965988,
+      "n_layers": 211,
+      "n_asym_layers": 211
+    }
+  ],
+  "delta_ppl": -3.2490370911962394,
+  "cost_factor": 8.828224869464918
+}

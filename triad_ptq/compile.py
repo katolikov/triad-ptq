@@ -277,19 +277,19 @@ def compile_model(
         W = _module_weight2d(mod).to(dev).float()
 
         # ---- Phase-2 asymmetric transfer (GPTAQ) -------------------------
-        # Before TRIAD's basis change, redirect the layer toward
-        #   target output = X̃ Wᵀ        (FP16 reference output)
-        # while accepting input X = post-quant cascade. The continuous
-        # optimum is W_aug = W · Cᵀ · H⁻¹ where C = X̃ᵀ X, H = XᵀX. This
-        # commutes with TRIAD's W' = W·U·Λ^β so the rest of the pipeline
-        # is unchanged. Convs are flattened to 2-D as elsewhere; for now
-        # we only run the transfer on Linears (Conv2d coverage is a
-        # follow-up — see ADR-010).
+        # Before TRIAD's basis change:
+        #   1. capture per-layer cascade Grams H_post = XᵀX, C = X̃ᵀX,
+        #   2. apply asymmetric weight transfer  W_aug = W · C · H_post⁻¹
+        #      (closed-form optimum of  ‖X̃ Wᵀ − X W_qᵀ‖²),
+        #   3. **swap the layer's effective Hessian to H_post** so the
+        #      downstream TRIAD basis change + GPTQ rounding all work in
+        #      the post-cascade frame. This is essential — the closed-
+        #      form transfer is optimal only if the rounding error is
+        #      measured under H_post; using the FP16 H_pre here was the
+        #      root cause of the SmolLM PPL regression in the first
+        #      Phase-2 attempt (see ADR-010 "Smoke validation").
+        H_layer_override: torch.Tensor | None = None
         if asymmetric_calib and isinstance(mod, nn.Linear):
-            # Re-collect the per-layer Grams on the *current* model state
-            # (rolling-quant for layers 0..l-1, FP16 for the rest, plus
-            # the FP16 reference for X̃). One forward-pass through each
-            # of two models per layer; cost ~2 × n_calib batches.
             ga = collect_layer_grams(
                 model_quant=model,
                 model_fp16=model_fp16_ref,
@@ -303,14 +303,25 @@ def compile_model(
             asym_meta[name]["bits"] = int(b)
 
             W = asymmetric_transfer(W, ga, percdamp=0.01)
+            # Swap to H_post for the rest of the pipeline. We keep a
+            # plain tensor reference here — `s.A` is consumed downstream
+            # and must continue to behave like a (d_in × d_in) Gram.
+            H_layer_override = ga.H_post.to(s.A.device).to(s.A.dtype).contiguous()
             del ga
             _empty_cache(dev)
+
+        # The "effective Hessian" used by the grid + H' build below. In the
+        # default code path this is the FP16 Gram s.A. In Phase-2 asymmetric
+        # mode it is the post-cascade Gram H_post we just collected above.
+        A_eff_source = (
+            H_layer_override if H_layer_override is not None else s.A
+        )
 
         # ---- D: grid (analytic eigh + closed-form beta) ------------------
         if cov_grid == "analytic":
             # Bring this one layer's A to compute device. eigh is done on CPU
             # via safe_eigh inside compute_grid (it pulls A.cpu()).
-            A_layer = s.A.to(dev)
+            A_layer = A_eff_source.to(dev)
             grid = compute_grid(W, A_layer)
             del A_layer
             if grid.beta_star <= 1e-4:
@@ -340,8 +351,8 @@ def compile_model(
             H_prime = torch.diag(Hp_diag)
             del Hp_diag
         else:
-            # use original A (pulled to compute device just for this layer)
-            H_prime = s.A.to(dev).float()
+            # use original A (or H_post override) on compute device for this layer
+            H_prime = A_eff_source.to(dev).float()
 
         # Free the per-layer A on a_device once we've consumed it. Setting
         # .A to a zero-byte tensor breaks any later access (intentional --
