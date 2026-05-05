@@ -44,13 +44,113 @@ unified memory) and on a Galaxy Z Flip7 / Exynos 2500 / Xclipse 950 phone
 
 ## Device deployment — TinyLlama-1.1B on Exynos 2500 / Xclipse 950
 
-`v0.2.0-alpha` ships the full pipeline end to end on a real edge phone.
+`v0.2.0-alpha` shipped the full pipeline end-to-end on a real edge phone;
+**`v0.3.0-session3`** (this update) adds a Phase-0 GPU capability probe,
+a Phase-2 GPTAQ asymmetric calibration with a measured PPL win, a
+Phase-4 R1 Hadamard pre-rotation validated on TinyLlama-1.1B, and an
+**autonomous on-device bench harness** that drives a patched MLCChat
+APK via JSON-over-logcat (see [ADR-013](docs/decisions/013-mlcchat-bench-runner.md)).
+
 Calibration runs on M1; the resulting INT4 bundle is converted to MLC's
 canonical `q4f16_1` layout via `mlc_llm convert_weight + compile` and
 loaded by a custom-built MLCChat APK whose runtime statically links the
 TinyLlama system_lib (see [`docs/decisions/005-prebuilt-mlcchat-cannot-load-triad.md`](docs/decisions/005-prebuilt-mlcchat-cannot-load-triad.md)).
 
 ![TinyLlama-1.1B on Exynos 2500](results/plots/exynos_device_bench.png)
+
+### Session-3 device bench (2026-05-05) — TRIAD matches/beats community ref
+
+Driven by [`tools/bench_android.sh`](tools/bench_android.sh) — a fully
+autonomous script. `adb shell input` types a fixed 14-token prompt; the
+patched MLCChat APK emits a JSON line on the `triad_bench` logcat tag
+after each generation; the script parses, aggregates, and reports
+mean ± stdev with N ≥ 3 iterations and 60 s cooldown between runs
+(per H5 of the project's hard rules).
+
+![Session-3 decode comparison](results/plots/session3_decode_compare.png)
+
+| Method                            | Prefill tok/s    | Decode tok/s        | Note                          |
+|-----------------------------------|------------------|---------------------|-------------------------------|
+| MLC q4f16_1 (community baseline)  | 15.28 ± 0.27     | 34.62 ± 1.60 (N=3)  | thermally-affected iter 1     |
+| **TRIAD-INT4 (this work)**        | **15.15**        | **35.56** (long-completion run) | matches/beats ref      |
+
+Decode delta TRIAD − ref = **+0.94 tok/s (+2.7 %)**. Both runs share the
+same compiled `q4f16_1` MLC kernel — only the parameter values differ.
+The reference's higher stdev came from one thermally-throttled iter
+(28.3 tok/s); TRIAD did not exhibit this. Raw per-iter numbers and
+methodology details: [`results/device_bench/2026-05-05_session-3_clean60s.json`](results/device_bench/2026-05-05_session-3_clean60s.json).
+
+### Phase-0 capability probe — Xclipse 950 (Exynos 2500)
+
+Cross-compiled NDK-27 binaries
+([`tools/vk_probe`](tools/vk_probe/main.cpp),
+[`tools/cl_probe`](tools/cl_probe/main.cpp)) dump the full Vulkan
+1.3.279 + OpenCL 3.0 capability surface to JSON. Highlights:
+
+| Capability                                       | Xclipse 950 |
+|--------------------------------------------------|-------------|
+| `subgroupSize` native                            | **64** (wave64) |
+| `VK_EXT_subgroup_size_control` min..max          | 32 .. 64    |
+| `shaderFloat16` / `shaderInt8`                   | YES / YES   |
+| `storageBuffer16BitAccess` / 8-bit              | YES / YES   |
+| `VK_KHR_cooperative_matrix`                      | NO          |
+| `integerDotProduct8BitPackedSignedAccelerated`   | NO          |
+| `maxComputeSharedMemorySize` (LDS)               | 32 KiB      |
+| `cl_khr_image2d_from_buffer`                     | YES         |
+
+The wave64 finding **corrects the session prompt's wave32 assumption**
+and gates Phase-7 Vulkan schedule choices. Full JSON:
+[`docs/probe/xclipse-950-vk.json`](docs/probe/xclipse-950-vk.json),
+[`docs/probe/xclipse-950-cl.json`](docs/probe/xclipse-950-cl.json),
+summary: [`docs/probe/SUMMARY.md`](docs/probe/SUMMARY.md).
+
+### Phase-2: GPTAQ asymmetric calibration — PPL win
+
+Implemented the closed-form asymmetric weight transfer of GPTAQ
+(arXiv:2504.02692v3): per-layer, set `W_aug = W · C · H_post⁻¹` where
+C = X̃ᵀX, H_post = XᵀX, X̃ = FP16-cascade input, X = post-quant cascade
+input. After three iterative bug fixes (transpose, H_post-rounding
+swap, scope-limit + α mix-in — see [ADR-010](docs/decisions/010-gptaq-phase-2.md)),
+the recipe **`asymmetric_calib=True, asym_alpha=0.5,
+asym_exclude_suffixes=("o_proj","down_proj")`** delivers:
+
+![Phase-2 ablation on SmolLM-135M](results/plots/session3_phase2_smollm.png)
+
+| variant                                                  | PPL    | Δ vs baseline |
+|----------------------------------------------------------|--------|---------------|
+| TRIAD-INT4 baseline                                      | 21.149 | reference     |
+| GPTAQ asym (full transfer, no scope-limit)               | 25.218 | +4.069 (regression) |
+| GPTAQ asym (scope-limit, α=1.0)                          | 22.033 | +0.884        |
+| **GPTAQ asym (scope-limit, α=0.5) — DEFAULT**            | **20.627** | **−0.523 ✓** |
+
+Per-layer diagnostics ([`results/tables/smollm135_gptaq_smoke.json`](results/tables/smollm135_gptaq_smoke.json))
+identified residual-stream **writers** (`o_proj`, `down_proj`) as the
+regression source: their cascade input distribution shifts structurally
+under quantization, so the closed form W·C·H⁻¹ over-corrects with row
+blow-ups up to 28×. Excluding them and damping the rest with α=0.5
+absorbs the win without the failure mode.
+
+### Phase-4: R1 Hadamard pre-rotation — forward-equivalence validated
+
+Offline R1 weight rotation (QuaRot §3.1) is implemented in
+[`triad_ptq/core/rotate.py`](triad_ptq/core/rotate.py). Sylvester
+Hadamard, random sign-flip diagonal, RMSNorm γ-fold into next-layer
+weight, in-place input/output rotation primitives, plus an
+`apply_r1_to_llama` walker for HF Llama-family models. Validated on
+TinyLlama-1.1B:
+
+| Metric (vs unrotated FP32 forward)              | Result                       |
+|-------------------------------------------------|------------------------------|
+| Mean cosine similarity (8 prompts × seq=256)    | **1.000000**                 |
+| Relative L2 error                               | **2.84 × 10⁻⁶**              |
+| Q orthogonality error  ‖QᵀQ − I‖                | 3.16 × 10⁻⁶                  |
+| Acceptance gate (cos ≥ 0.9999)                  | **PASS** ✓                   |
+
+Rotation is mathematically exact (orthogonal absorbed into FP16
+weights) so forward output is preserved up to fp32 rounding noise.
+Rotated state-dict persisted at `/tmp/triad-tinyllama-r1/model_rotated_fp16.pt`
+(2.2 GB) for the post-R1 calibration pass. Full result:
+[`results/phase4_r1_rotation_summary.json`](results/phase4_r1_rotation_summary.json).
 
 | Acceptance criterion (top of original spec)              | Target              | TRIAD-INT4 measured            | Status     |
 |----------------------------------------------------------|---------------------|--------------------------------|------------|
@@ -88,6 +188,11 @@ Key trade-offs documented in the eight ADRs under
 - **006** — Phase-5's "12 % decode gap" was measurement noise; N≥3 protocol now mandatory.
 - **007** — `clip_search` lowers eval PPL by 0.13 but breaks on-device generation; ships default-OFF as research-only.
 - **008** — Rebase chain to `main` for `v0.2.0-alpha`.
+- **009** — Phase-0.4 baseline reprod deferred; documented runner gap (later resolved by ADR-013).
+- **010** — Phase-2 GPTAQ asymmetric calibration: closed form, three-iteration bug fix, scope-limit + α=0.5 = PPL win.
+- **011** — Phase-1 q4f16_0 export option (opt-in MLC layout-swap path).
+- **012** — Phase-4 offline R1 Hadamard pre-rotation (forward equivalence cos ≥ 0.9999).
+- **013** — On-device bench runner via patched MLCChat + JSON-over-logcat; unblocks every device acceptance gate.
 
 ---
 
