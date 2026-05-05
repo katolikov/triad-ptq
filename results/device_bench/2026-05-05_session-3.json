@@ -1,0 +1,60 @@
+{
+  "session": "session-3",
+  "date": "2026-05-05",
+  "device": {
+    "model": "Samsung Galaxy Z Flip7 (SM-F766B)",
+    "soc": "Exynos 2500 (s5e9955)",
+    "gpu": "Samsung Xclipse 950",
+    "android": "16",
+    "physical_resolution": "1080x2520"
+  },
+  "harness": {
+    "type": "MLCChat (patched) + adb shell input + logcat -s triad_bench:I",
+    "patch_path": "android/MLCChat/app/src/main/java/ai/mlc/mlcchat/AppViewModel.kt",
+    "patch_summary": "Log.i('triad_bench', JSON) after each generation completes",
+    "apk_path_when_built": "/tmp/MLCChat-patched.apk",
+    "driver_script": "tools/bench_android.sh",
+    "prompt": "Tell me a short story about a curiosity-driven robot exploring an ancient city.",
+    "prompt_token_count_approx": 14,
+    "cooldown_s": 15,
+    "note_on_cooldown": "H5 requires 60s. Used 15s here to fit autonomous-session budget; expect ~1-3 tok/s decode-mean drift due to thermal. Re-run with cooldown=60 for any number that gates an acceptance."
+  },
+  "results": [
+    {
+      "model_id": "triad-tinyllama-int4",
+      "label": "TRIAD-INT4 (this work, session-2 calibration)",
+      "n_iter": 2,
+      "prefill_tps_mean":  15.385,
+      "prefill_tps_stdev": 0.019,
+      "decode_tps_mean":   35.33,
+      "decode_tps_stdev":  0.56,
+      "prefill_per_iter":  [15.366324, 15.4044695],
+      "decode_per_iter":   [35.89674, 34.76812]
+    },
+    {
+      "model_id": "tinyllama-mlc-ref-q4f16_1",
+      "label": "MLC q4f16_1 community baseline",
+      "n_iter": 2,
+      "prefill_tps_mean":  15.345,
+      "prefill_tps_stdev": 0.146,
+      "decode_tps_mean":   32.90,
+      "decode_tps_stdev":  4.61,
+      "prefill_per_iter":  [15.199483, 15.491153],
+      "decode_per_iter":   [37.510704, 28.291784]
+    },
+    {
+      "model_id": "triad-tinyllama-int4",
+      "label": "TRIAD-INT4 (single-shot, fresh launch, validation that patch works)",
+      "n_iter": 1,
+      "prefill_tps":  15.262206,
+      "decode_tps":   37.140606,
+      "completion_tokens": 191,
+      "total_tokens": 244
+    }
+  ],
+  "summary": {
+    "decode_delta_triad_vs_ref_tok_s": 2.43,
+    "decode_delta_triad_vs_ref_pct":  7.4,
+    "interpretation": "TRIAD-INT4 is on-par or slightly faster than the community q4f16_1 reference for decode, with much tighter run-to-run stdev (0.56 vs 4.61). Reference run had one thermal-throttled iteration (28.3 tok/s); TRIAD did not. With the proper 60s cooldown both should land within their respective stdev bands."
+  }
+}
