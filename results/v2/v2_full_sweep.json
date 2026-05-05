@@ -1,13 +1,61 @@
 {
   "schema": "v2_full_sweep/0",
-  "status": "PLACEHOLDER",
+  "status": "PARTIAL — TRIAD-INT4 v1 bundle measured at N=10 on Z Flip7; runbook still owns v2 calibration + baselines + reference",
   "branch": "v2-spectra",
   "tag": "v2.0.0-alpha",
-  "created_utc": "2026-05-06T00:00:00Z",
-  "note": "Reserved for the Phase H runbook (RTX 4090 + Galaxy Z Flip7). The runbook will overwrite this file with the measured H2 evaluation matrix (4 models x 8 baselines x 2 devices x WT2 PPL + zero-shot suite + N=10 paired-t decode_tps). See docs/decisions/017-h2-h4-hardware-deferred.md for the contract. Until that runbook completes, this file is empty by design — no v2 model-and-device numbers are claimed in the README, STATUS, or REPORT.",
-  "models": [],
-  "baselines": [],
-  "metrics": [],
-  "devices": [],
-  "rows": []
+  "created_utc": "2026-05-06T01:30:00Z",
+
+  "device_runs": [
+    {
+      "run_id":            "2026-05-06_z_flip7_triad_int4_n10",
+      "device":            "Galaxy Z Flip7 (SM-F766B), Exynos 2500, Xclipse 950",
+      "model_id":          "triad-tinyllama-int4",
+      "bundle_origin":     "v1 TRIAD-INT4 calibration, q4f16_1 export, session-3 install",
+      "protocol":          {"adr": "ADR-014", "iters_requested": 10, "warmups": 1, "cooldown_s": 60},
+      "iters_successful":  6,
+      "iters_failed":      4,
+      "decode_tps_mean":   31.40,
+      "decode_tps_stdev":  4.80,
+      "prefill_tps_mean":  15.00,
+      "prefill_tps_stdev": 0.39,
+      "completion_tokens_per_iter": [153, 78, 559, 591, 599, 612],
+      "decode_tps_per_iter":        [36.29, 34.44, 35.39, 25.10, 32.72, 24.49],
+      "thermal_finding": {
+        "short_completions_decode_mean_lt200": 35.36,
+        "long_completions_decode_mean_ge500":  29.43,
+        "delta_short_minus_long_tps":          5.93,
+        "interpretation": "Sustained-generation decode is 5-6 tok/s slower than cold-cache short-generation decode on Xclipse 950 — thermal throttling kicks in over the course of a 500-600-token generation. The session-3 N=3 value of 35.56 tok/s reflected only the short-generation regime; the N=10 value with mixed completion lengths is 31.40 ± 4.80 tok/s."
+      },
+      "supersedes_published_claim": {
+        "session_3_value":              "35.56 tok/s decode (N=3, short generations only)",
+        "session_3_published_delta":    "+0.94 tok/s vs ref (+2.7%)",
+        "session_3_status_per_adr_014": "not statistically distinguishable from zero",
+        "n10_replacement":              "31.40 ± 4.80 tok/s (N=6 successful out of 10) covering both short and long completion regimes",
+        "honest_published_claim":       "TRIAD-INT4 sustained decode on Xclipse 950: 31.4 ± 4.8 tok/s; short-completion decode ~35 tok/s; long-completion decode ~29 tok/s."
+      },
+      "raw":     "results/v2/device_bench/2026-05-06_z_flip7_triad_int4_n10.json",
+      "summary": "results/v2/device_bench/2026-05-06_z_flip7_triad_int4_summary.json"
+    }
+  ],
+
+  "still_deferred_to_runbook": {
+    "reference_baseline_q4f16_1": {
+      "status": "NOT_RUN",
+      "reason": "The reference q4f16_1 community-baseline bundle is not currently installed on the device. Only the TRIAD-INT4 bundle exists in /data/data/ai.mlc.mlcchat/files/. To run the paired-t comparison the runbook must (1) download the canonical TinyLlama-1.1B q4f16_1 bundle from MLC's HF repo, (2) adb-push it as a second model row, (3) re-run the bench with BENCH_BASELINE_JSON pointing at the ref JSON to get the paired-t output."
+    },
+    "v2_calibration": {
+      "status": "NOT_RUN",
+      "reason": "v2 calibration on TinyLlama-1.1B requires either a 4090 host (per the v2 plan budget, ≤30 min) or a long M1 run with safe_cholesky_inverse (Phase A6 unblocks but adds CPU/fp64 overhead). On the M1 dev host the v2 pipeline runs end-to-end on synthetic LlamaConfig fixtures (Phase H integration test), but no real model has been calibrated."
+    },
+    "ppl_eval_matrix": {
+      "status": "NOT_RUN",
+      "reason": "WT2 PPL on Llama-3.2-1B / TinyLlama-1.1B / SmolLM-360M / SmolLM-135M for v2 + the 6 baseline runners requires CUDA. The runners under experiments/baselines/ currently emit skipped:no_cuda on M1."
+    },
+    "group_size_sweep_on_device": {
+      "status": "NOT_RUN",
+      "reason": "Three pre-calibrated bundles (G ∈ {32, 64, 128}) need to be staged on the phone before ADR-015's gate can resolve from 'Provisional' to 'Accepted: G=...'."
+    }
+  },
+
+  "deferred_per_adr": "ADR-017"
 }

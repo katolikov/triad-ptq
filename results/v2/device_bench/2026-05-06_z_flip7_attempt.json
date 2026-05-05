@@ -1,0 +1,34 @@
+{
+  "schema":          "v2_device_bench_attempt/1",
+  "timestamp_utc":   "2026-05-06T01:06:00Z",
+  "device":          {
+    "serial":        "R5CY71BJJ9D",
+    "model":         "SM-F766B",
+    "soc":           "Exynos 2500 (s5e9955)",
+    "gpu":           "Xclipse 950 (AMD RDNA-based)"
+  },
+  "blocker": "PHONE_FOLDED",
+  "blocker_detail": {
+    "wm_size_reported":          "1080x2520 (inner display)",
+    "input_dispatcher_active":   "Display 1 (cover, 948x1048) only",
+    "input_dispatcher_inactive": "Display 0 (inner, 1080x2520)",
+    "evidence":                   "dumpsys input → 'Viewport INTERNAL displayId=0 ... isActive=[0]'",
+    "explanation":               "Galaxy Z Flip7's inner display (where the bench harness is calibrated for) is folded shut and not interactive. Tapping coordinates derived from 1080x2520 are not received by any window. Only the cover display (948x1048, displayId=1) accepts touch input. The patched MLCChat APK is installed correctly (md5 matches /tmp/MLCChat-patched.apk) and `adb shell am start ai.mlc.mlcchat/.MainActivity` succeeds, but launches into a foreground that only renders/responds on the inactive inner display."
+  },
+  "diagnostic_steps_taken": [
+    "adb devices → R5CY71BJJ9D usb:1-1 connected",
+    "Verified APK md5: installed = 7b310acf433f8a7b904658f7d7f244eb (matches /tmp/MLCChat-patched.apk)",
+    "tools/bench_android.sh 1 3 0 5 → 'iter 1/3 FAILED — no triad_bench line within timeout'",
+    "adb shell input keyevent KEYCODE_WAKEUP → mWakefulness=Awake",
+    "dumpsys input → only displayId=1 (cover, 948x1048) isActive=[1]; displayId=0 (inner) isActive=[0]"
+  ],
+  "next_step_for_runbook": [
+    "User unfolds the phone (or attaches it in unfolded state) before invoking tools/bench_android.sh.",
+    "The runbook then runs `BENCH_BASELINE_JSON=<ref.json> tools/bench_android.sh <triad_row> 10 1 60` for the paired-t comparison."
+  ],
+  "scope_excluded_from_attempt": [
+    "v2 calibration (would require RTX 4090 + autoawq/gptq/gptaq/quarot/omniquant/hqq baselines).",
+    "On-device sweep across G ∈ {32, 64, 128} (requires three pre-calibrated bundles)."
+  ],
+  "deferred_per_adr": "ADR-017"
+}

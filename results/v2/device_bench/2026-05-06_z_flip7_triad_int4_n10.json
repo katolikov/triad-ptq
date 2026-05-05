@@ -1,0 +1,33 @@
+{
+  "model_id": "triad-tinyllama-int4",
+  "n_iter": 6,
+  "warmups": 1,
+  "prefill_tps_mean": 14.996338166666666,
+  "prefill_tps_stdev": 0.3932881062941929,
+  "decode_tps_mean": 31.404979333333333,
+  "decode_tps_stdev": 4.800288793743132,
+  "prompt_tokens_mean": 0.0,
+  "completion_tokens_mean": 432.0,
+  "prefill_per_iter": [
+    15.088629,
+    15.520951,
+    14.990614,
+    14.893904,
+    14.23978,
+    15.244151
+  ],
+  "decode_per_iter": [
+    36.289978,
+    34.43679,
+    35.393074,
+    25.098549,
+    32.719994,
+    24.491491
+  ],
+  "cooldown_s": 60,
+  "protocol": {
+    "adr": "ADR-014",
+    "min_iters": 10
+  },
+  "group_size_annot": null
+}
