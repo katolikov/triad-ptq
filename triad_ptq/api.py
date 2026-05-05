@@ -25,6 +25,8 @@ def optimize(
     rho_probe_n: int = 4,
     progress: bool = True,
     clip_search: bool = False,
+    asymmetric_calib: bool = False,
+    return_meta: bool = False,
 ):
     """One-line PTQ entry point.
 
@@ -52,4 +54,6 @@ def optimize(
         rho_probe_n=rho_probe_n,
         progress=progress,
         clip_search=clip_search,
+        asymmetric_calib=asymmetric_calib,
+        return_meta=return_meta,
     )

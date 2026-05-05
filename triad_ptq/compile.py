@@ -44,12 +44,15 @@ from rich.console import Console
 from .core.allocator import allocate_bits, uniform_bits
 from .core.calibration import (
     LayerStats,
+    _default_forward,
     attach_rho,
     collect_input_stats,
     estimate_rho,
     quantizable_modules,
 )
 from .core.gptq_solver import gptq_quantize_layer
+from .core.gptaq_asym import asymmetric_transfer, asymmetry_strength
+from .core.gptaq_capture import collect_layer_grams
 from .core.grid import compute_grid
 from .core.modules import TriadConv2d, TriadLinear
 from .core.quantize import _dequantize, quantize_grouped
@@ -109,6 +112,7 @@ def compile_model(
     progress: bool = True,
     return_meta: bool = False,
     clip_search: bool = False,
+    asymmetric_calib: bool = False,
 ):
     warn_no_silent_fallback()
     dev = torch.device(device) if device else best_device()
@@ -122,6 +126,23 @@ def compile_model(
     model.to(dev).eval()
     for p in model.parameters():
         p.requires_grad_(False)
+
+    # GPTAQ Phase-2: keep an immutable FP16 deepcopy of the original model so
+    # we can compute per-layer cross-Grams C = E[X̃ᵀ X_post] during the
+    # streaming GPTQ loop. We do this BEFORE any layer replacement.
+    model_fp16_ref: nn.Module | None = None
+    if asymmetric_calib:
+        import copy as _copy
+        if progress:
+            console.log("  asymmetric_calib=True → cloning FP16 reference model "
+                        "(memory ≈ 2× model size)")
+        model_fp16_ref = _copy.deepcopy(model)
+        model_fp16_ref.eval()
+        for p in model_fp16_ref.parameters():
+            p.requires_grad_(False)
+        # FP16 reference can stay on the same compute device — it just runs
+        # forward passes alongside the rolling-quant model.
+        model_fp16_ref.to(dev)
 
     layers = quantizable_modules(model)
     if not layers:
@@ -249,10 +270,41 @@ def compile_model(
     # ---- Step D+E+F (pass 2): per-layer streaming GPTQ + module replace ----
     repl_count = 0
     layer_grid_meta: dict[str, dict] = {}
+    asym_meta: dict[str, dict] = {}
     t3 = time.perf_counter()
     for (name, mod), b in zip(layers, alloc.bits):
         s = stats[name]
         W = _module_weight2d(mod).to(dev).float()
+
+        # ---- Phase-2 asymmetric transfer (GPTAQ) -------------------------
+        # Before TRIAD's basis change, redirect the layer toward
+        #   target output = X̃ Wᵀ        (FP16 reference output)
+        # while accepting input X = post-quant cascade. The continuous
+        # optimum is W_aug = W · Cᵀ · H⁻¹ where C = X̃ᵀ X, H = XᵀX. This
+        # commutes with TRIAD's W' = W·U·Λ^β so the rest of the pipeline
+        # is unchanged. Convs are flattened to 2-D as elsewhere; for now
+        # we only run the transfer on Linears (Conv2d coverage is a
+        # follow-up — see ADR-010).
+        if asymmetric_calib and isinstance(mod, nn.Linear):
+            # Re-collect the per-layer Grams on the *current* model state
+            # (rolling-quant for layers 0..l-1, FP16 for the rest, plus
+            # the FP16 reference for X̃). One forward-pass through each
+            # of two models per layer; cost ~2 × n_calib batches.
+            ga = collect_layer_grams(
+                model_quant=model,
+                model_fp16=model_fp16_ref,
+                layer_name=name,
+                batches=cal_list,
+                device=dev,
+                forward_fn=forward_fn or _default_forward,
+                a_device=a_dev,
+            )
+            asym_meta[name] = asymmetry_strength(ga, H_pre=s.A)
+            asym_meta[name]["bits"] = int(b)
+
+            W = asymmetric_transfer(W, ga, percdamp=0.01)
+            del ga
+            _empty_cache(dev)
 
         # ---- D: grid (analytic eigh + closed-form beta) ------------------
         if cov_grid == "analytic":
@@ -379,11 +431,18 @@ def compile_model(
             f"{time.perf_counter()-t3:.1f}s (total {time.perf_counter()-t0:.1f}s)"
         )
 
+    # Free the FP16 reference now that the streaming loop is done.
+    if model_fp16_ref is not None:
+        del model_fp16_ref
+        _empty_cache(dev)
+
     if return_meta:
         return model, {
             "alloc": alloc,
             "n_layers": len(layers),
             "grid": layer_grid_meta,
             "super_weights": {n: int(s.rows.numel()) for n, s in sw_global.items()},
+            "asymmetric_calib": asymmetric_calib,
+            "asymmetry_per_layer": asym_meta,
         }
     return model
