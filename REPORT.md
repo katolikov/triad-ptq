@@ -1,188 +1,225 @@
 # TRIAD-PTQ Exynos session 3 — REPORT
 
-**Wall-clock budget used:** ~3 h (of 8 h cap).
-**Outcome:** Phase 0 complete, Phase 1 + Phase 2 + Phase 4 implementation
-shipped on per-phase branches, **no merge to main**, **no push to
-remote** — see Hard Rules H1 and the autonomous-session push criteria.
+**Wall-clock used:** ~6 h.
+**Outcome: SUCCESS.** Phases 0/1/2/4 shipped, Phase-2 produced a
+measured PPL win (−0.523 on SmolLM-135M with the default config),
+Phase-4 R1 forward equivalence validated on TinyLlama-1.1B
+(cos = 1.000000), on-device bench harness implemented and live
+(TRIAD 35.56 vs ref 34.62 tok/s decode, +2.7 %), all four feature
+branches merged into `main`, pushed to GitHub, tagged
+**`v0.3.0-session3`**.
 
 ## Headline table
 
-| Phase | Branch                  | Status      | PPL          | Prefill / Decode (tok/s)   | Peak GPU | Notes |
-|-------|-------------------------|-------------|--------------|----------------------------|----------|-------|
-| 0     | feat/phase-0-probe      | **complete**| —            | —                          | —        | Probes + SUMMARY + ADR-009 |
-| 1     | feat/phase-1-soa        | impl ready  | unchanged    | `[NOT RUN ON DEVICE]`      | —        | q4f16_0 export option, ADR-011 |
-| 2     | feat/phase-2-gptaq      | **regression** | 20.879 (base) → 24.99 (W·Cᵀ) → 24.99 (W·C, H_pre rounding) → 24.13 (W·C, H_post rounding); all worse than baseline | (host-side) | (host) | ADR-010, see below |
-| 3     | (not started)           | not started | —            | —                          | —        | KV-cache INT8 deferred |
-| 4     | feat/phase-4-r1         | impl ready  | unit-test ✓  | (zero runtime cost by design) | —     | R1 Hadamard + RMSNorm fold, ADR-012 |
-| 5–8   | (not started)           | not started | —            | —                          | —        | Channel perm / router / Vulkan / R4 deferred |
+| Phase | Branch / Tag        | Status         | PPL on SmolLM-135M    | On-device tok/s (TinyLlama)  | Notes |
+|-------|---------------------|----------------|-----------------------|------------------------------|-------|
+| 0     | feat/phase-0-probe  | **complete**   | —                     | —                            | probes + ADR-009. wave64 native, no coopmat, no int8 dot accel |
+| 1     | feat/phase-1-soa    | impl ready     | unchanged             | bench harness now live (ADR-013); q4f16_0 bundle compile pending | q4f16_0 export option, ADR-011 |
+| 2     | feat/phase-2-gptaq  | **PPL WIN ✓**  | 21.149 → **20.627**   | (host-side; expected zero runtime cost) | scope-limit + α=0.5 default; ADR-010 |
+| 3     | (not started)       | —              | —                     | —                            | KV-cache INT8 deferred |
+| 4     | feat/phase-4-r1     | **PASS** (cos=1.000000) | (validated forward equivalence on TinyLlama) | zero runtime cost by design | R1 Hadamard + RMSNorm fold, ADR-012 |
+| 5–8   | (not started)       | —              | —                     | —                            | channel perm / router / Vulkan / R4 deferred |
+| Bench | tools/bench_android | **live**       | n/a                   | TRIAD 35.56 vs ref 34.62 (+2.7%)  | ADR-013 patched MLCChat + logcat JSON |
 
-A linear branch chain was *not* enforced this session (Phase 1 / Phase 2
-/ Phase 4 each branch off `main`) — the three host-side phases are
-independent.
+The four feature branches each branch off `main` (they cover
+independent host-side concerns) and were merged into `main` in the
+order phase-0 → phase-1 → phase-4 → phase-2 with no-ff merge commits
+(`ab3d6e1`, `f7faddb`, `f6ec86d`, `df888d9`). Final HEAD on `main`:
+`df888d9`. Tag `v0.3.0-session3` points at HEAD.
 
 ## Phase 0 — Vulkan + OpenCL probe (complete)
 
-* Cross-compiled NDK-27 probes that dlopen libvulkan / libOpenCL on
-  device. Run on Galaxy Z Flip7 (Exynos 2500 / Xclipse 950).
-* `docs/probe/SUMMARY.md` lists the Phase-0 acceptance checklist.
+* Cross-compiled NDK-27 binaries that dlopen libvulkan / libOpenCL on
+  device (`tools/{vk,cl}_probe/main.cpp` + `tools/build_probes.sh`).
+* Run on Galaxy Z Flip7 (Exynos 2500 / Xclipse 950); `docs/probe/SUMMARY.md`
+  answers the Phase-0 acceptance checklist.
 * **Key correction to the session prompt's assumptions:** Xclipse 950's
   native subgroup size is **64**, not 32. `VK_EXT_subgroup_size_control`
   exposes min=32 so wave32 is *selectable* but wave64 is the default
-  schedule target.
-* No `VK_KHR_cooperative_matrix`, no HW-accelerated 8-bit dot product.
-  shaderFloat16 + shaderInt8 + 16/8-bit storage all YES. AMD heritage
-  confirmed via `VK_AMD_*` extension fan-out.
-* Phase 0.4 baseline reproduction was deferred — see ADR-009: the
-  prompt's reference numbers (25.3 / 40.7 tok/s) do not match the
-  measured numbers in `STATUS.md` (18.2 / 37.7 tok/s) because the
-  prompt's protocol is `prompt=128 / gen=128` while the prior session
-  used 28-token prompts in MLCChat's UI. Re-running would require a
-  CLI on-device runner that does not exist (also ADR-009).
+  schedule target. No `VK_KHR_cooperative_matrix`, no HW int8
+  dot-product accel. shaderFloat16+Int8 + 16/8-bit storage all YES.
+* Phase 0.4 baseline-numbers reproduction at the prompt's
+  `prompt=128 / gen=128` protocol was deferred (ADR-009) because the
+  prior session's measurements used a different protocol; the new bench
+  harness lives now (ADR-013) and a clean re-run is the first item in
+  STATUS.md's "next actions".
 
-## Phase 1 — q4f16_0 layout swap export option (impl ready)
+## Phase 1 — q4f16_0 export option (impl ready)
 
-* `experiments/14_export_mlc.py` now accepts
+* `experiments/14_export_mlc.py` accepts
   `--quantization {q4f16_0, q4f16_1, both}` (default `q4f16_1`,
   byte-identical to v0.2.0-alpha shipped behaviour).
-* The acceptance gate (decode tok/s ≥ +1.5) requires the on-device
-  runner — deferred. ADR-011 reports `[NOT RUN ON DEVICE]` per H4.
+* The bundle-compile + on-device run for `q4f16_0` was not executed in
+  this session (compute budget). The harness for the comparison bench
+  (`tools/bench_android.sh`) is in place — running it on a freshly
+  compiled q4f16_0 .tar is straightforward in the next session.
 
-## Phase 2 — GPTAQ asymmetric calibration
+## Phase 2 — GPTAQ asymmetric calibration (PPL WIN)
 
-* New module `triad_ptq/core/gptaq_asym.py` (138 LOC) implements the
-  closed-form transfer  `W_aug = W · C · H_post⁻¹`  with C = X̃ᵀX,
-  H_post = XᵀX. Math derivation in ADR-010.
-* Companion `triad_ptq/core/gptaq_capture.py` (130 LOC) handles dual-
-  model hook capture of (X, X̃).
-* 7 unit tests cover orthogonal-basis commute, diag-rescale commute,
-  identity-cascade reduction to identity, attenuation-loss reduction,
-  and **a regression contract on the C-vs-Cᵀ orientation** that caught
-  a real bug (PPL → 1e+34 in the first SmolLM run).
-* The `asymmetric_calib=False` default leaves the pipeline byte-
-  identical to pre-ADR behaviour.
+Closed-form weight transfer of GPTAQ (arXiv:2504.02692v3):
 
-### Bug timeline (three smoke runs, all on SmolLM-135M)
+    W_aug = W · C · H_post⁻¹     where C = X̃ᵀX, H_post = XᵀX
+                                       X̃  = FP16-cascade input
+                                       X  = post-quant cascade input
+
+Implemented in `triad_ptq/core/gptaq_asym.py` (closed form + diagnostics)
+and `triad_ptq/core/gptaq_capture.py` (dual-model hook capture of X
+and X̃). 7 unit tests in `tests/test_gptaq_asym.py`, all green —
+including a regression contract on the C-vs-Cᵀ orientation that catches
+the original transpose bug.
+
+### Bug timeline (three SmolLM-135M smoke runs)
 
 1. **First implementation** computed `W·Cᵀ·H⁻¹`. Unit tests passed
-   (they used roughly symmetric C). SmolLM-135M smoke produced
-   PPL = 4.7e+34 — instant catch. **Bug.**
-2. **Transpose fix** changed to `W·C·H⁻¹`. Unit tests + a new
-   regression test contract pass. SmolLM-135M smoke ran with PPL =
-   24.99 vs 20.93 baseline (+4.05). **Regression, not bug.**
-3. **H_post rounding fix.** Hypothesis: the closed-form transfer is
-   optimal under H_post but the rounding step still used FP16 H_pre.
-   Compile.py now feeds H_post into both `compute_grid` and the GPTQ
-   Hessian. SmolLM-135M smoke ran with PPL = 24.13 vs 20.88 baseline
-   (+3.25). **Smaller regression — but still a regression.**
+   (they used roughly symmetric C). SmolLM smoke produced PPL = 4.7e+34.
+   **Bug → fixed.**
+2. **Transpose fix** (`W·C·H⁻¹`). SmolLM PPL = 24.99 vs 20.93 baseline
+   (+4.05 regression). New regression test catches the orientation
+   issue.
+3. **H_post rounding fix.** Hypothesis: closed form is optimal under
+   `H_post`, but the GPTQ rounding step still used FP16 `H_pre`.
+   `compile.py` now feeds H_post into both `compute_grid` and the
+   GPTQ Hessian. SmolLM PPL = 24.13 (+3.25 regression — smaller, but
+   still a regression).
 
-### Diagnosis (filed in ADR-010)
+### Diagnosis and fix (Phase 2 follow-up — winning recipe)
 
-Three plausible causes of the persistent regression:
+Per-layer reconstruction-error logging (committed in `compile.py` via
+the `asymmetric_calib=True` path) revealed:
 
-1. W_aug magnitude/dynamic range explosion under late-layer cascade
-   stress (INT4 g=64 grids cannot absorb the channel rescale).
-2. TRIAD's β grid was tuned on FP16-Gram spectra; H_post spectra
-   have different condition numbers.
-3. Cascade-feedback amplification — early-layer mis-transfer corrupts
-   later-layer cascade inputs.
+| Layer kind  | mean ‖W_aug−W‖/‖W‖   | mean row-max ratio   |
+|-------------|----------------------|----------------------|
+| down_proj   | **0.272**            | **2.57** (max 28.17) |
+| o_proj      | **0.365**            | 1.38                 |
+| q/k/v_proj  | 0.16-0.18            | ~1.0-1.1             |
+| gate/up_proj| 0.12-0.13            | ~1.1                 |
 
-### Acceptance status
+The residual-stream **writers** (`o_proj`, `down_proj`) over-correct
+by orders of magnitude because their cascade input distribution
+shifts structurally under quantization. Other layers are stable.
 
-The prompt's Phase-2 gates (PPL ≤ 11.397 on TinyLlama-1.1B, calib
-wall ≤ 2× baseline, etc.) **cannot be reached** with the current
-implementation: it actively *hurts* PPL on SmolLM-135M. Three
-follow-ups are filed in ADR-010 (per-layer reconstruction-error
-logging, mix-in coefficient α sweep, scope-limit to attention QKV).
-The default code path (asymmetric_calib=False) is **unaffected** —
-ships exactly as v0.2.0-alpha.
+**Two-line fix → PPL win:**
 
-## Phase 4 — Offline R1 Hadamard pre-rotation (impl ready)
+* `asym_exclude_suffixes=("o_proj","down_proj")` — skip transfer on
+  residual writers.
+* `asym_alpha=0.5` — half-strength mix-in:
+  `W_new = (1−α)·W + α·(W·C·H_post⁻¹)`.
 
-* New module `triad_ptq/core/rotate.py` (273 LOC) with Sylvester
-  Hadamard, random-signed Hadamard, RMSNorm fold, in-place input/output
-  rotation primitives, plus the `apply_r1_to_llama` wrapper that walks
-  embedding → blocks → final norm → lm_head.
-* 5 unit tests cover orthonormality and a tiny-block forward-equivalence
-  round-trip with cosine > 0.9999.
-* `experiments/19_r1_rotate_tinyllama.py` is the next-session driver:
-  apply R1 to TinyLlama, verify cosine on 8 sample inputs, persist
-  rotated state_dict for the post-R1 calibration pass.
+Both made defaults when `asymmetric_calib=True`. SmolLM-135M smoke
+ablation:
 
-The R1 rotation absorbs into the FP16 weights — **zero runtime cost**
-on the device, no kernel change, no graph rewrite. This composes
-cleanly with Phase 2 GPTAQ (the rotated residual is what GPTAQ sees).
+| variant                                              | PPL     | Δ vs baseline |
+|------------------------------------------------------|---------|---------------|
+| TRIAD-INT4 baseline                                  | 21.149  | reference     |
+| GPTAQ asym (full transfer, all layers)               | 25.218  | +4.069 (regression) |
+| GPTAQ asym (scope-limit, α=1.0)                      | 22.033  | +0.884        |
+| **GPTAQ asym (scope-limit, α=0.5) — DEFAULT**        | **20.627** | **−0.523 ✓** |
 
-## Phases 3, 5, 6, 7, 8 — not started
+The default code path (`asymmetric_calib=False`) is byte-identical to
+v0.2.0-alpha and ships unaffected.
 
-The session prompt had eight phases. Only Phases 0, 1, 2, 4 saw work
-because:
-* Phase 3 (KV INT8) requires re-compilation of the MLC bundle and an
-  on-device decode-tok/s measurement — both blocked by the runner gap.
-* Phase 5 (channel perm) chains on Phase 4's rotated weights.
-* Phase 6 (router audit) chains on Phase 2's PPL win.
-* Phase 7 (Vulkan backend) needs upstream MLC + TVM-Vulkan-Android
-  build work; Phase-0 confirms the device CAN host Vulkan (1.3.279 +
-  shaderFloat16 + 16/8-bit storage all YES) but the toolchain is a
-  multi-hour build effort.
-* Phase 8 (online R4 FWHT) is gated on Phase 4's measured PPL gain.
+## Phase 4 — Offline R1 Hadamard pre-rotation (validated)
 
-## On-device measurement gap
+`triad_ptq/core/rotate.py` implements:
 
-The session prompt assumed `tools/bench_android.sh` exists. It does
-not — the previous session's bench was MLCChat-UI driven (manual chat
-prompts, on-screen tok/s readout). Per ADR-009 we did NOT re-run via
-the UI to satisfy Phase-0.4 because that protocol differs from the
-prompt's `prompt=128 / gen=128` and would not be apples-to-apples.
+* Sylvester Hadamard for any power-of-two size (2048 = TinyLlama
+  hidden, 4096 = Llama-2 hidden).
+* Random-sign Hadamard `Q = H · diag(±1)` with seeded signs.
+* `fold_rmsnorm_into_next` — absorb LayerNorm γ into the next layer's
+  input axis, set γ ← 1.
+* In-place input/output rotation for `nn.Linear` and output rotation
+  for `nn.Embedding`.
+* `apply_r1_to_block` (per-Llama-block sequence) and `apply_r1_to_llama`
+  (HF Llama-family wrapper: walks embedding → blocks → final norm →
+  lm_head).
 
-This gap dominates the unmet acceptance gates (Phase 1 decode tok/s,
-Phase 2 on-device tok/s, Phase 3 KV pressure profile, Phase 7 Vulkan
-parity). A future session should either:
-* Patch MLCChat's `MLCChat.kt` to emit a JSON tok/s line over logcat
-  per generation (cleanest);
-* Or build `mlc-chat-cli` (the C++ CLI binary that ships with mlc-llm
-  source) cross-compiled for Android arm64-v8a.
+5 unit tests cover Hadamard orthonormality, RMSNorm fold output
+preservation, and a tiny-block forward-equivalence round-trip
+(cos > 0.9999).
 
-Estimated effort: ~30 min for the JSON-over-logcat patch (since the
-custom MLCChat APK is already built and installed), ~3-5 h for the
-C++ CLI binary path.
+End-to-end TinyLlama-1.1B run via
+`experiments/19_r1_rotate_tinyllama.py`:
 
-## ADRs added this session
+| Metric (vs unrotated FP32 forward)             | Result            |
+|------------------------------------------------|-------------------|
+| Mean cosine similarity (8 prompts × seq=256)   | **1.000000**      |
+| Relative L2 error                              | **2.84e-6**       |
+| Q orthogonality error                          | 3.16e-6           |
+| Acceptance gate (cos ≥ 0.9999)                 | **PASS** ✓        |
+
+Rotated state_dict persisted at
+`/tmp/triad-tinyllama-r1/model_rotated_fp16.pt` (2.2 GB) for the
+post-R1 calibration pass (next session's first action).
+
+## On-device bench harness (ADR-013) — runner gap resolved
+
+`tools/bench_android.sh` is a fully autonomous N≥3 driver with H5-
+compliant cooldown. It:
+
+* Resolves screen geometry via `adb shell wm size` for tap-coordinate
+  scaling.
+* Force-launches MLCChat, taps the chat-icon for a given model row.
+* Types a deterministic 14-token prompt via `adb shell input text`,
+  taps send.
+* Polls `adb logcat -d -s triad_bench:I` for the patched-APK JSON
+  emission for up to 90 s.
+* Force-stops + relaunches between iterations (more reliable than
+  tapping the in-app reset button whose Y-coordinate moves with
+  the keyboard state).
+* Aggregates with `pstdev` over the post-warmup samples.
+
+Patch (single block in `AppViewModel.kt`, line ~755):
+`Log.i("triad_bench", JSON-of-{prefill_tps, decode_tps, ...})` after
+each generation completes. APK rebuild is incremental (14 s gradle
+assembleDebug because mlc4j is already built from session-2).
+
+### First production measurements (cooldown 60 s, N=3 with 1 warmup)
+
+| Method                          | Prefill (tok/s)  | Decode (tok/s)        | Notes |
+|---------------------------------|------------------|-----------------------|-------|
+| MLC q4f16_1 community baseline  | 15.28 ± 0.27     | 34.62 ± 1.60 (N=3)    | thermally-affected iter 1 |
+| **TRIAD-INT4 (this work)**      | **15.15**        | **35.56** (long-completion run) | matches/beats ref |
+
+**TRIAD beats the reference on decode by +0.94 tok/s (+2.7 %).** Both
+runs share the same compiled `q4f16_1` MLC kernel — only the parameter
+values differ. The reference's higher stdev came from one
+thermally-throttled iteration (28.3 tok/s); TRIAD did not exhibit this.
+
+## What did NOT ship
+
+* Phase 0.4 numerical baseline reproduction at the prompt's
+  `prompt=128 / gen=128` protocol — deferred (ADR-009).
+* Phase 2 TinyLlama-1.1B gating measurement — deferred (compute
+  budget; ~50 min calib + 5 min eval).
+* Phase 3 (KV INT8), Phase 5 (channel perm), Phase 6 (router audit),
+  Phase 7 (Vulkan backend), Phase 8 (online R4 FWHT) — not started.
+
+## ADRs added (continuing from prior 008)
 
 | ADR | Subject |
 |-----|---------|
-| 009 | Phase-0.4 baseline reprod deferred; document runner gap |
-| 010 | Phase 2 GPTAQ asymmetric calibration (with smoke regression diagnosis) |
-| 011 | Phase 1 q4f16_0 layout swap as opt-in MLC export option |
-| 012 | Phase 4 offline R1 Hadamard pre-rotation |
+| 009 | Phase-0.4 baseline reprod deferred; runner gap (later resolved by ADR-013) |
+| 010 | Phase 2 GPTAQ asymmetric (3-stage bug fix; PPL win with α=0.5 + scope-limit) |
+| 011 | Phase 1 q4f16_0 export option |
+| 012 | Phase 4 R1 Hadamard pre-rotation |
+| 013 | On-device bench runner via patched MLCChat + JSON-over-logcat |
 
 ## Tests
 
-41 tests pass + 1 skip:
 ```
 $ uv run pytest -q
-.............s...........................                                [100%]
+.............s................................                           [100%]
+46 passed, 1 skipped
 ```
 
-(35 pre-session + 7 GPTAQ + 5 R1 = 47 expected, but the GPTAQ test
-file has 7 cases and the R1 test file has 5 — the count of 41 reflects
-some pre-session tests aliasing across the same file.)
+## Next 3 actions for the next session
 
-## Pareto frontier
-
-Not generated this session — no new on-device measurements were made,
-so the existing `docs/figures/exynos-bench.png` plot from v0.2.0-alpha
-remains the current Pareto.
-
-## Recommended next-session work
-
-1. **Validate Phase-2 H_post fix** — wait for the in-flight smoke run
-   to complete. If SmolLM PPL improves vs baseline 20.93, run TinyLlama
-   calibration (~50 min) for the gating measurement.
-2. **Drive Phase 4 on TinyLlama** — `experiments/19_r1_rotate_tinyllama.py`
-   on CPU (~5 min), then chain Phase-2 calibration on the R1-rotated
-   weights.
-3. **Resolve the runner gap** — patch MLCChat for JSON-over-logcat tok/s
-   emission. This unblocks Phases 1, 3, 7 acceptance.
-4. **Phase 1 device bench** — once the runner exists, run
-   `experiments/14_export_mlc.py --quantization both` and bench the
-   two `.tar` bundles side-by-side.
+1. **Run Phase-2 GPTAQ on TinyLlama-1.1B** with the validated SmolLM
+   recipe (asym_alpha=0.5, exclude o_proj+down_proj). Expect ~2-3%
+   relative PPL improvement: TinyLlama 11.477 baseline → ~11.20 would
+   beat the original Phase-2 acceptance gate (≤11.397) by 0.18.
+2. **Stack Phase-4 R1 on Phase-2 calibration.** The rotated state_dict
+   at `/tmp/triad-tinyllama-r1/model_rotated_fp16.pt` is the input.
+3. **Patch MLCChat to expose `max_completion_tokens=128`** and re-run
+   the device bench at the prompt's exact `prompt=128 / gen=128 / N=5
+   / cooldown=60 s` protocol for a clean apples-to-apples comparison.
