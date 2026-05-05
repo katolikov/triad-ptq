@@ -1,0 +1,34 @@
+{
+  "platform_count": 1,
+  "platforms": [
+    {
+      "name": "Samsung Mobile GPU Platform",
+      "vendor": "Samsung Electronics Co., Ltd.",
+      "version": "OpenCL 3.0  (1.0)",
+      "profile": "FULL_PROFILE",
+      "extensions": "cl_khr_icd cl_amd_bus_addressable_memory ",
+      "device_count": 1,
+      "devices": [
+        {
+          "name": "Samsung Xclipse 950",
+          "vendor": "Samsung Electronics Co., Ltd.",
+          "version": "OpenCL 3.0",
+          "driverVersion": "3.552, 35d62f642a",
+          "openCL_C_version": "OpenCL C 3.0 ",
+          "maxComputeUnits": 8,
+          "maxWorkGroupSize": 1024,
+          "globalMemSize": 4294967296,
+          "localMemSize": 32768,
+          "maxMemAllocSize": 1073741824,
+          "globalMemCacheSize": 1048576,
+          "imageSupport": true,
+          "preferredVectorWidthHalf": 0,
+          "nativeVectorWidthHalf": 0,
+          "svmCapabilities": "0x3",
+          "halfFpConfig": "0x3e",
+          "extensions": "cl_khr_global_int32_base_atomics cl_khr_global_int32_extended_atomics cl_khr_local_int32_base_atomics cl_khr_local_int32_extended_atomics cl_khr_int64_base_atomics cl_khr_int64_extended_atomics cl_khr_3d_image_writes cl_khr_byte_addressable_store cl_khr_fp16 cl_amd_device_attribute_query cl_khr_image2d_from_buffer cl_khr_subgroups cl_khr_depth_images cl_khr_mipmap_image cl_khr_mipmap_image_writes cl_arm_import_memory cl_arm_import_memory_host cl_arm_import_memory_dma_buf cl_arm_import_memory_protected cl_khr_extended_versioning cl_khr_priority_hints "
+        }
+      ]
+    }
+  ]
+}
