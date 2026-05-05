@@ -38,15 +38,14 @@ V2_LEAF_MODULES = [
 # Phases land in order; once a phase ships, its leaf moves out of the
 # UNIMPLEMENTED set and into the IMPLEMENTED set. Phase B implements
 # triad_ptq._v2.router.squisher.
-V2_LEAF_MODULES_UNIMPLEMENTED = [
-    "triad_ptq._v2.groupsize.sweep",
-]
+V2_LEAF_MODULES_UNIMPLEMENTED: list[str] = []
 V2_LEAF_MODULES_IMPLEMENTED = [
     "triad_ptq._v2.router.squisher",
     "triad_ptq._v2.rotation.sign_perm",
     "triad_ptq._v2.transform.learnable_beta",
     "triad_ptq._v2.lwc.selective",
     "triad_ptq._v2.superweight.channel_int8",
+    "triad_ptq._v2.groupsize.sweep",
 ]
 
 
@@ -69,13 +68,17 @@ def test_v2_leaf_module_marked_implemented(modname: str) -> None:
     assert mod.IMPLEMENTED is True
 
 
-def test_v2_unimplemented_leaves_have_implemented_false() -> None:
-    """Phase G's groupsize.sweep is the last module to flip — until then
-    it carries IMPLEMENTED=False and is callable as plain Python (no
-    NotImplementedError facade because nothing currently invokes it).
-    """
+def test_v2_all_leaves_implemented_after_phase_g() -> None:
+    """All Phase B–G leaves now report IMPLEMENTED=True."""
     from triad_ptq._v2.groupsize import sweep
-    assert sweep.IMPLEMENTED is False
+    from triad_ptq._v2.lwc import selective
+    from triad_ptq._v2.rotation import sign_perm
+    from triad_ptq._v2.router import squisher
+    from triad_ptq._v2.superweight import channel_int8
+    from triad_ptq._v2.transform import learnable_beta
+
+    for mod in (sweep, selective, sign_perm, squisher, channel_int8, learnable_beta):
+        assert mod.IMPLEMENTED is True
 
 
 # --------------------------------------------------------------------- A3

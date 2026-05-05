@@ -43,6 +43,11 @@ ITERS="${2:-10}"
 WARMUPS="${3:-1}"
 COOLDOWN="${4:-60}"
 BASELINE_JSON="${BENCH_BASELINE_JSON:-}"
+# Phase G annotation: set BENCH_GROUP_SIZE when sweeping G ∈ {32, 64,
+# 128}; the value is echoed into the JSON so the sweep aggregator can
+# pivot rows by G. The script does NOT swap bundles — the caller
+# installs the matching APK/model row and sets this env var.
+GROUP_SIZE_ANNOT="${BENCH_GROUP_SIZE:-}"
 
 if (( ITERS < 3 )); then
     echo "[bench] iters must be >= 3 per H5 (v2 default and ADR-014 minimum is 10)" >&2
@@ -157,11 +162,12 @@ print(f(d.get("prefill_tps")), f(d.get("decode_tps")),
     fi
 done
 
-python3 - "${model_id}" "${BASELINE_JSON}" "${prefills[@]:-}" -- "${decodes[@]:-}" -- "${ptokens[@]:-}" -- "${ctokens[@]:-}" -- "${WARMUPS}" "${COOLDOWN}" <<'PY'
+python3 - "${model_id}" "${BASELINE_JSON}" "${GROUP_SIZE_ANNOT}" "${prefills[@]:-}" -- "${decodes[@]:-}" -- "${ptokens[@]:-}" -- "${ctokens[@]:-}" -- "${WARMUPS}" "${COOLDOWN}" <<'PY'
 import json, math, os, sys, statistics as s
 args = sys.argv[1:]
 model_id = args.pop(0)
 baseline_path = args.pop(0)
+group_size_annot = args.pop(0) or None
 def take():
     out = []
     while args and args[0] != "--":
@@ -245,6 +251,7 @@ out = {
     "decode_per_iter":   dec,
     "cooldown_s":        cooldown,
     "protocol":          {"adr": "ADR-014", "min_iters": 10},
+    "group_size_annot":  group_size_annot,
 }
 if paired is not None:
     out["paired_t"] = paired
