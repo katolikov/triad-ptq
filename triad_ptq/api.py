@@ -29,13 +29,38 @@ def optimize(
     asym_alpha: float = 0.5,
     asym_exclude_suffixes: tuple = ("o_proj", "down_proj"),
     return_meta: bool = False,
+    algorithm: str = "v1",
+    # ---------------- v2 (SPECTRA-Q) parameters; ignored when algorithm="v1"
+    rotation: str = "sign_perm",
+    super_channel_rate: float = 0.015,
+    gptaq_alpha_c: float = 1.0,
+    lwc_threshold_percentile: float = 75.0,
 ):
     """One-line PTQ entry point.
 
     See README "Quickstart" for usage. The function returns the same `model`
     instance with quantizable layers replaced in place by TriadLinear /
     TriadConv2d wrappers.
+
+    `algorithm`:
+      - "v1": ships TRIAD-PTQ v1.0.0 (production path, default).
+      - "v2": SPECTRA-Q. Currently a no-op stub during the Phase A migration
+        (raises NotImplementedError). Phases B–H land the real pipeline.
     """
+    if algorithm not in ("v1", "v2"):
+        raise ValueError(
+            f"optimize: unknown algorithm={algorithm!r} (expected 'v1' or 'v2')"
+        )
+    if algorithm == "v2":
+        # Phase A is plumbing-only: the v2 pipeline is intentionally an explicit
+        # NotImplementedError rather than a silent fall-through to v1, so callers
+        # cannot accidentally believe they got v2 numbers from a v1 run.
+        raise NotImplementedError(
+            "algorithm='v2' (SPECTRA-Q) is not yet implemented — Phase A "
+            "(plumbing) has landed; Phases B–H will populate the v2 pipeline. "
+            "Pass algorithm='v1' to use the current production path."
+        )
+
     from .compile import compile_model
 
     return compile_model(

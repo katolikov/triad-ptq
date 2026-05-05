@@ -1,8 +1,15 @@
 # ADR-006: Phase-5 decode/prefill gap is measurement noise, not a real shader-level effect
 
-Status: **Awaiting-review**
+Status: **Accepted** (superseded for the `iters` default by ADR-014)
 Date: 2026-05-05
 Branch: `feat/exynos-profile-gap`
+
+> **Update 2026-05-05 (v2-spectra branch).** ADR-014 raises the default
+> iteration count from 3 to 10 and adds a paired-t test, because v2's
+> per-component deltas are smaller than what N=3 can resolve. The H5
+> floor of `iters >= 3` from this ADR remains the script-level minimum;
+> the new minimum for any *published claim* is N=10. See
+> [`docs/decisions/014-bench-protocol-n10.md`](014-bench-protocol-n10.md).
 
 ## Context
 
@@ -115,6 +122,10 @@ A.5 was framed as "pick one fix and try it." The fix that follows
 from A.3 is **a methodology change, not a code change**: any future
 device benchmark of TRIAD must use ≥ 5 runs, drop the first as
 warm-up, and report mean ± std (or median + IQR), not a single number.
+
+**ADR-014 (v2-spectra) raises the published-claim minimum to N=10**
+and adds a paired-t test against a baseline-run JSON. The H5 floor at
+N≥3 below stays as the absolute hard floor for sanity runs.
 
 Mechanically:
 
