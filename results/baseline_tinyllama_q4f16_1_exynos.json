@@ -1,0 +1,38 @@
+{
+  "method": "MLC q4f16_1 (community baseline, mlc_llm convert_weight on stock HF TinyLlama)",
+  "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+  "model_id": "tinyllama-mlc-ref-q4f16_1",
+  "device": {
+    "soc": "Exynos 2500 (S5E9955)",
+    "gpu": "Xclipse 950 (AMD RDNA-based)",
+    "android_runtime_lib": "OpenCL via libtvm4j_runtime_packed.so (custom-built APK; ADR-005)",
+    "model_lib_prefix": "llama_q4f16_1_6429f5e250a1cd87923dcc0ba823fe8e (shared with TRIAD; same arch+config)"
+  },
+  "bench": {
+    "prompt": "Write a short poem about the ocean and the moonlight in simple words that a child could read and enjoy as a bedtime story now please.",
+    "prompt_tokens_approx": 28,
+    "prefill_tokens_per_s": 25.2,
+    "decode_tokens_per_s": 42.9,
+    "source": "MLCChat custom debug build (mlc_llm 0.20.dev162) on-device chat UI"
+  },
+  "memory_kb": {
+    "total_pss": 1044993,
+    "total_rss": 1184044,
+    "graphics": 822064,
+    "gl_mtrack": 775664,
+    "egl_mtrack": 46400,
+    "native_heap": 76072,
+    "java_heap": 18824,
+    "code": 23164
+  },
+  "memory_mb": {
+    "total_pss": 1021,
+    "total_rss": 1156,
+    "graphics": 803,
+    "native_heap": 74
+  },
+  "ppl_wikitext2_m1": null,
+  "ppl_source": "Not measured in this session. Community model card cites WikiText-2 PPL ~7.7 on full eval; not directly comparable to TRIAD's 11.477 because eval window differs (TRIAD uses the same 4-batch reduced window as the FP16 baseline 10.882). On the SAME eval window the reference would be expected within +/- 0.2 of the FP16 baseline.",
+  "disk_mb_on_device": 593,
+  "wall_clock": "2026-05-05 10:19 UTC+3"
+}

@@ -1,0 +1,38 @@
+{
+  "method": "TRIAD-INT4",
+  "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+  "model_id": "triad-tinyllama-int4",
+  "device": {
+    "soc": "Exynos 2500 (S5E9955)",
+    "gpu": "Xclipse 950 (AMD RDNA-based)",
+    "android_runtime_lib": "OpenCL via libtvm4j_runtime_packed.so (custom-built APK; ADR-005)",
+    "model_lib_prefix": "llama_q4f16_1_6429f5e250a1cd87923dcc0ba823fe8e"
+  },
+  "bench": {
+    "prompt": "Write a short poem about the ocean and the moonlight in simple words that a child could read and enjoy as a bedtime story now please.",
+    "prompt_tokens_approx": 28,
+    "prefill_tokens_per_s": 18.2,
+    "decode_tokens_per_s": 37.7,
+    "source": "MLCChat custom debug build (mlc_llm 0.20.dev162) on-device chat UI"
+  },
+  "memory_kb": {
+    "total_pss": 1048443,
+    "total_rss": 1186084,
+    "graphics": 808592,
+    "gl_mtrack": 762192,
+    "egl_mtrack": 46400,
+    "native_heap": 83672,
+    "java_heap": 29996,
+    "code": 23112
+  },
+  "memory_mb": {
+    "total_pss": 1024,
+    "total_rss": 1158,
+    "graphics": 789,
+    "native_heap": 82
+  },
+  "ppl_wikitext2_m1": 11.477,
+  "ppl_source": "results/triad_tinyllama_int4_m1.json (M1 dequant-then-fp16-matmul on the same eval window the FP16 baseline used; on-device run not implemented in custom MLCChat fork, MLC q4f16_1 shader is numerically equivalent to dequant-then-matmul within fp16 rounding)",
+  "disk_mb_on_device": 593,
+  "wall_clock": "2026-05-05 10:17 UTC+3"
+}
