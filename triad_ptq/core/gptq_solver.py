@@ -24,6 +24,64 @@ import torch
 from .quantize import QuantizedWeight, _dequantize, _quantize_group
 
 
+def _find_clip(
+    W_g: torch.Tensor,
+    bits: int,
+    x_var: torch.Tensor | None = None,
+    ratios: tuple[float, ...] = (1.0, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7),
+) -> torch.Tensor:
+    """Per-row clip-ratio search (B.4).
+
+    For each row independently, sweep `ratios` to scale the per-group
+    (wmin, wmax) before quantization, and pick the ratio that minimises
+    the activation-weighted MSE  sum_j x_var[j] * (w_g[..., j] - dq[..., j])^2.
+    If `x_var` is None, falls back to plain MSE.
+
+    Returns a tensor of shape (m,) with the chosen ratio per row.
+    """
+    qmax = (1 << bits) - 1
+    m = W_g.size(0)
+    n_g = W_g.size(1)
+    g = W_g.size(2)
+
+    # Precompute baseline (ratio=1.0) min/max
+    wmin = W_g.amin(dim=-1, keepdim=True)
+    wmax = W_g.amax(dim=-1, keepdim=True)
+
+    if x_var is None:
+        x_w = torch.ones(g, device=W_g.device, dtype=W_g.dtype)
+    else:
+        x_w = x_var.to(W_g.device).to(W_g.dtype)
+
+    # (n_groups, g) -> broadcast against (m, n_groups, g)
+    if x_w.numel() == n_g * g:
+        x_w = x_w.reshape(n_g, g)
+
+    best_err = torch.full((m,), float("inf"), device=W_g.device, dtype=W_g.dtype)
+    best_ratio = torch.ones(m, device=W_g.device, dtype=W_g.dtype)
+    for r in ratios:
+        wmin_r = wmin * r
+        wmax_r = wmax * r
+        scale = (wmax_r - wmin_r).clamp_min(1e-8) / qmax
+        zero = (-wmin_r / scale).round().clamp(0, qmax)
+        # Convention 2 (matches gptq_solver's main loop):
+        #   q  = round(w/scale + z).clamp(0, qmax)
+        #   dq = (q - z) * scale
+        # No "+ wmin_r" term -- the zero point already encodes the shift.
+        q = ((W_g / scale) + zero).round().clamp(0, qmax)
+        dq = (q - zero) * scale
+        # Weighted squared error per row
+        err_per_grp = ((W_g - dq) ** 2)
+        if x_w.dim() == 1:
+            err = err_per_grp.sum(dim=-1).matmul(torch.ones(n_g, device=W_g.device, dtype=W_g.dtype))
+        else:
+            err = (err_per_grp * x_w.unsqueeze(0)).sum(dim=(-1, -2))
+        improved = err < best_err
+        best_err = torch.where(improved, err, best_err)
+        best_ratio = torch.where(improved, torch.full_like(best_ratio, r), best_ratio)
+    return best_ratio
+
+
 def gptq_quantize_layer(
     W: torch.Tensor,
     H: torch.Tensor,
@@ -33,6 +91,7 @@ def gptq_quantize_layer(
     actorder: bool = False,
     percdamp: float = 0.01,
     blocksize: int = 128,
+    clip_search: bool = False,
 ) -> QuantizedWeight:
     """Standard GPTQ pass on a single dense layer.
 
@@ -41,6 +100,11 @@ def gptq_quantize_layer(
     Returns the quantized weight; dequantize() reconstructs W_hat.
 
     Implementation tracks the original GPTQ paper's algorithm 1.
+
+    `clip_search` (B.4): if True, runs a per-row activation-weighted
+    clip-ratio search before the per-group scale/zero are computed
+    inside the Cholesky update. Picked ratio shrinks (wmin, wmax)
+    multiplicatively, absorbing outliers without spreading the grid.
     """
     assert W.ndim == 2 and H.shape == (W.size(1), W.size(1))
     dev = W.device
@@ -56,6 +120,10 @@ def gptq_quantize_layer(
     if dead.any():
         H.diagonal()[dead] = 1.0
         Wq[:, dead] = 0.0
+
+    # Snapshot true per-column variance E[x_j^2] = H[j,j] before H is
+    # mutated / freed. Used by clip_search below.
+    col_var_full = H.diagonal().detach().clone()
 
     # Activation reordering (descending importance) ------------------------
     if actorder:
@@ -98,6 +166,40 @@ def gptq_quantize_layer(
     zeros = torch.zeros(m, n_groups, dtype=torch.int32, device=dev)
     qcodes = torch.zeros(m, n, dtype=torch.int32, device=dev)
 
+    # B.4 clip search: when enabled, compute one (m,) ratio per row from
+    # the *initial* W and the per-column variance E[x_j^2] = H[j,j] (true
+    # activation magnitudes from calibration). The chosen ratio is applied
+    # inside the per-group scale/zero update below AND we pre-clamp Wq to
+    # the new range so GPTQ propagates only quantization noise (sub-grid),
+    # not clamping error (super-grid). This matches AWQ-clip / OmniQuant's
+    # treatment.
+    if clip_search:
+        # Pad columns to a multiple of g if needed, then reshape to groups.
+        if n % g != 0:
+            pad = g - (n % g)
+            W_pad = torch.nn.functional.pad(Wq, (0, pad))
+            x_pad = torch.nn.functional.pad(col_var_full, (0, pad))
+        else:
+            W_pad = Wq
+            x_pad = col_var_full
+            pad = 0
+        n_p = W_pad.size(1)
+        W_groups = W_pad.reshape(m, n_p // g, g)
+        x_groups = x_pad.reshape(n_p // g, g)
+        clip_ratio = _find_clip(W_groups, bits=bits, x_var=x_groups)  # (m,)
+        # Pre-clamp Wq to the chosen per-row range. The clamping is done
+        # per (row, group) using the chosen per-row ratio.
+        wmin_g = W_groups.amin(dim=-1, keepdim=True)
+        wmax_g = W_groups.amax(dim=-1, keepdim=True)
+        r = clip_ratio.view(m, 1, 1)
+        wmin_clip = wmin_g * r
+        wmax_clip = wmax_g * r
+        W_clipped = torch.maximum(torch.minimum(W_groups, wmax_clip), wmin_clip)
+        Wq[:, :n] = W_clipped.reshape(m, n_p)[:, :n]
+        del W_pad, W_groups, x_groups, wmin_g, wmax_g, wmin_clip, wmax_clip, W_clipped
+    else:
+        clip_ratio = None
+
     cur_group = -1
 
     for i1 in range(0, n, blocksize):
@@ -118,7 +220,9 @@ def gptq_quantize_layer(
                 group_end = min(group_start + g, n)
                 # use the current (already partially updated) W
                 Wg_view = Wq[:, group_start:group_end]
-                # simulate per-row asymmetric quantization
+                # Wq is already pre-clamped when clip_search is enabled
+                # (see the block above the main loop). The per-group
+                # (wmin, wmax) here therefore reflect the clipped range.
                 wmin = Wg_view.amin(dim=-1, keepdim=True)
                 wmax = Wg_view.amax(dim=-1, keepdim=True)
                 s = (wmax - wmin).clamp_min(1e-8) / qmax
