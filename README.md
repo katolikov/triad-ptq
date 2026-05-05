@@ -3,23 +3,46 @@
 **Trace–Router–Interaction-Aware Decomposition for post-training quantization
 of edge-class neural networks.**
 
+> **Status — v2.0.0-alpha (SPECTRA-Q) on the `v2-spectra` branch.** v2 lands
+> a refactored pipeline (block-diagonal rotation, learnable-β + selective
+> LWC, channel-INT8 super-weights, ρ-weighted GPTAQ α, hardware-aware
+> group-size sweep). All v2 *code paths* run end-to-end on synthetic
+> fixtures (155 tests pass on M1); the *measured* model-and-device
+> numbers (PPL on Llama-3.2-1B / TinyLlama-1.1B / SmolLM-360M / SmolLM-
+> 135M, decode tok/s on Galaxy Z Flip7) require an RTX 4090 + the
+> physical phone and are produced by a separate runbook.
+> See [ADR-017](docs/decisions/017-h2-h4-hardware-deferred.md) for the
+> deferred-eval contract and [docs/v2-design.md](docs/v2-design.md) for
+> the SPECTRA-Q design.
+>
+> The headline numbers in this README are **v1 / v0.3.0-session3**
+> measurements unless explicitly tagged as v2. v2's PPL and decode
+> claims are blank in `results/v2/` until the runbook produces them.
+
 TRIAD-PTQ is a weight-only post-training quantization scheme for compact LLMs
 (≤3 B params), small CNNs (MobileNet / EfficientNet-class), and edge ViTs
-(MobileViT). It combines (i) a global Hessian sensitivity router built on a
-KFAC factorization with an empirical inter-layer propagation coefficient,
-(ii) a data-aware super-weight identifier that preserves the most damaging
-0.05 – 0.5 % of weights at FP16, and (iii) an analytic activation–weight
-cross-covariance grid `W' = W·U·Λ^β*` whose smoothing exponent β* is given
-in closed form by a per-layer rate-distortion derivation. After the
-transformation a standard GPTQ Cholesky update finishes the layer at INT3
-or INT4. A single call `triad_ptq.optimize(model, bits=4, calibration=...)`
-runs in minutes on M1 with no backward passes.
+(MobileViT). v1 (default `algorithm='v1'`) combines (i) a sensitivity
+router built on a KFAC factorization, (ii) a data-aware super-weight
+identifier that preserves the most damaging 0.05 – 0.5 % of weights at
+FP16, and (iii) an analytic activation–weight cross-covariance grid
+`W' = W·U·Λ^β*` whose smoothing exponent β* is given in closed form by a
+per-layer rate-distortion derivation. After the transformation a standard
+GPTQ Cholesky update finishes the layer at INT3 or INT4. A single call
+`triad_ptq.optimize(model, bits=4, calibration=...)` runs in minutes on M1
+with no backward passes.
+
+> **Note on the v1 trace router.** The `bit_allocator='trace'` watershed
+> was retired in v2. v1 already ships with `bit_allocator='uniform'` as
+> the de-facto default for integer bit budgets; v2 replaces the
+> rate-distortion split with the Squisher Fisher diagonal
+> ([arXiv:2507.18807](https://arxiv.org/abs/2507.18807)).
 
 This repository is the M1-native reference implementation accompanying the
-preprint *“TRIAD-PTQ v1.0.0”* (Katolikov, May 2026). Every number in the
-result tables below is a real measurement on the author's M1 Pro (16 GB
-unified memory) and on a Galaxy Z Flip7 / Exynos 2500 / Xclipse 950 phone
-— no mocks, no synthetic data, no extrapolation.
+preprint *"TRIAD-PTQ v1.0.0"* (Katolikov, May 2026). Every v1 number in
+the result tables below is a real measurement on the author's M1 Pro
+(16 GB unified memory) and on a Galaxy Z Flip7 / Exynos 2500 / Xclipse
+950 phone — no mocks, no synthetic data, no extrapolation. v2 numbers,
+when they appear, will cite a `results/v2/<phase>_*.json` file.
 
 ---
 
@@ -58,14 +81,22 @@ TinyLlama system_lib (see [`docs/decisions/005-prebuilt-mlcchat-cannot-load-tria
 
 ![TinyLlama-1.1B on Exynos 2500](results/plots/exynos_device_bench.png)
 
-### Session-3 device bench (2026-05-05) — TRIAD matches/beats community ref
+### Session-3 device bench (2026-05-05) — N=3, supersedes pending Phase H
+
+> **Caveat ([ADR-014](docs/decisions/014-bench-protocol-n10.md)).** The N=3
+> "+2.7 % decode" claim below is **not statistically distinguishable from
+> zero**: with σ ≈ 6 % of decode mean, N=3 needs a ~14 % effect to clear
+> α=0.05 on a paired-t test. v2's `tools/bench_android.sh` defaults to
+> N=10 with a paired-t output; the v2 README (when Phase H lands) will
+> cite N=10 numbers and supersede the "+2.7 %" line.
 
 Driven by [`tools/bench_android.sh`](tools/bench_android.sh) — a fully
 autonomous script. `adb shell input` types a fixed 14-token prompt; the
 patched MLCChat APK emits a JSON line on the `triad_bench` logcat tag
 after each generation; the script parses, aggregates, and reports
 mean ± stdev with N ≥ 3 iterations and 60 s cooldown between runs
-(per H5 of the project's hard rules).
+(per H5 of the project's hard rules; the **v2 minimum** is N=10 — see
+[ADR-014](docs/decisions/014-bench-protocol-n10.md)).
 
 ![Session-3 decode comparison](results/plots/session3_decode_compare.png)
 
@@ -74,11 +105,18 @@ mean ± stdev with N ≥ 3 iterations and 60 s cooldown between runs
 | MLC q4f16_1 (community baseline)  | 15.28 ± 0.27     | 34.62 ± 1.60 (N=3)  | thermally-affected iter 1     |
 | **TRIAD-INT4 (this work)**        | **15.15**        | **35.56** (long-completion run) | matches/beats ref      |
 
-Decode delta TRIAD − ref = **+0.94 tok/s (+2.7 %)**. Both runs share the
-same compiled `q4f16_1` MLC kernel — only the parameter values differ.
-The reference's higher stdev came from one thermally-throttled iter
-(28.3 tok/s); TRIAD did not exhibit this. Raw per-iter numbers and
-methodology details: [`results/device_bench/2026-05-05_session-3_clean60s.json`](results/device_bench/2026-05-05_session-3_clean60s.json).
+Decode delta TRIAD − ref = +0.94 tok/s (+2.7 %). **Statistical
+significance: not measurable at N=3** — the delta is well inside the
+1-σ band of the ref's own decode distribution (σ ≈ 1.6 tok/s) and a
+two-sided paired t-test cannot reject the null (the rejection region
+at α=0.05 starts at |t|>4.30, which would require ~14 % effect). The
+"+2.7 %" line stays in the historical record (per the changelog) but
+the published claim is **"matches q4f16_1 community baseline within
+measurement noise"**, not "+2.7 %". Both runs share the same compiled
+`q4f16_1` MLC kernel — only the parameter values differ. The reference's
+higher stdev came from one thermally-throttled iter (28.3 tok/s); TRIAD
+did not exhibit this. Raw per-iter numbers and methodology:
+[`results/device_bench/2026-05-05_session-3_clean60s.json`](results/device_bench/2026-05-05_session-3_clean60s.json).
 
 ### Phase-0 capability probe — Xclipse 950 (Exynos 2500)
 
@@ -177,7 +215,49 @@ Only the parameter values differ. TRIAD-INT4's per-group fp16 scale
 distribution matches the community baseline's across every percentile,
 so there is no shader-level slowdown at this model size.
 
-Key trade-offs documented in the eight ADRs under
+### What changed in v2 (alpha)
+
+`v2.0.0-alpha` (branch `v2-spectra`, 2026-05-06) introduces SPECTRA-Q:
+
+| v1 component                              | v2 replacement                                                              | ADR / module |
+|-------------------------------------------|------------------------------------------------------------------------------|--------------|
+| Trace router (rate-distortion watershed)  | **Squisher Fisher diagonal** ([arXiv:2507.18807](https://arxiv.org/abs/2507.18807)) | `_v2/router/squisher.py` |
+| R1 Hadamard (full-d)                      | **Block-diagonal sign+permutation** at G ([arXiv:2511.04214](https://arxiv.org/abs/2511.04214)) | `_v2/rotation/sign_perm.py`, [ADR-014](docs/decisions/014-bench-protocol-n10.md) for the bench tightening |
+| Closed-form β\* (eq. 5)                   | **Learnable per-block β** via 100 Adam BRECQ-recon steps                     | `_v2/transform/learnable_beta.py`, [ADR-016](docs/decisions/016-d3-closed-form-beta-init-deferred.md) |
+| FP16 sparse super-weights                 | **Channel-grained INT8** mixed precision (top-1.5 % output channels)         | `_v2/superweight/channel_int8.py` |
+| Fixed α = 0.5 GPTAQ                       | **ρ-weighted α** = min(0.8, σ(c·log ρ)), c=1.0                             | `_v2/calib/gptaq_rho_alpha.py` |
+| –                                         | **Selective LWC** on top-25 % most sensitive blocks (jointly trained with β) | `_v2/lwc/selective.py` |
+| –                                         | **Hardware-aware G ∈ {32, 64, 128} sweep**                                  | `_v2/groupsize/sweep.py`, [ADR-015](docs/decisions/015-group-size-default.md) |
+
+Bench protocol tightened from N=3 to N=10 with paired-t
+([ADR-014](docs/decisions/014-bench-protocol-n10.md)). Six baseline
+runners (`autoawq`, `gptq`, `gptaq` official, `quarot_offline`,
+`omniquant_lwc`, `hqq`) staged under `experiments/baselines/` for the
+Phase-H runbook.
+
+### What TRIAD-v2 does NOT claim
+
+**Honesty contract for the v2 alpha**:
+
+* No algorithmic decode speedup beyond what G=32 → G=64 bandwidth
+  savings buy you (a hardware effect, not an algorithm effect; gated
+  on Mali measurement per [ADR-015](docs/decisions/015-group-size-default.md)).
+* No novelty for components that are direct ports of published work:
+  * R1-style rotation **(ported from QuaRot, modified to block-diagonal per arXiv:2511.04214)**
+  * GPTAQ asymmetric calibration **(ported from arXiv:2504.02692)**
+  * BRECQ-style block-output reconstruction **(ported from BRECQ)**
+  * OmniQuant LWC **(ported from arXiv:2308.13137)**
+  * Squisher Fisher diagonal **(ported from arXiv:2507.18807)**
+  * Channel-INT8 super-weight insight **(extends Yu et al. arXiv:2411.07191)**
+
+The only **original** v2 contributions are:
+1. The **ρ-weighted α scheduling** for GPTAQ (`_v2/calib/gptaq_rho_alpha.py`).
+2. The **channel-INT8 packing format** (`_v2/superweight/channel_int8.py`)
+   that fits inside one MLC q4f16_1 bundle without a kernel change.
+
+Everything else is engineering.
+
+Key trade-offs documented in the v1 + v2 ADRs under
 [`docs/decisions/`](docs/decisions/):
 
 - **001** — `truncated_eigh` rejected (rank deficiency in `W' = W·U·Λ^β`).
@@ -193,6 +273,10 @@ Key trade-offs documented in the eight ADRs under
 - **011** — Phase-1 q4f16_0 export option (opt-in MLC layout-swap path).
 - **012** — Phase-4 offline R1 Hadamard pre-rotation (forward equivalence cos ≥ 0.9999).
 - **013** — On-device bench runner via patched MLCChat + JSON-over-logcat; unblocks every device acceptance gate.
+- **014** — v2: tighten device-bench protocol from N=3 to N=10 + paired-t.
+- **015** — v2: group-size default decision is gated on Mali measurement (provisional).
+- **016** — v2: closed-form β\* init (D3) deferred — operates in a different basis.
+- **017** — v2: full eval matrix (H2–H4) deferred to runbook; ADR documents the contract.
 
 ---
 
@@ -387,25 +471,23 @@ are saved to `results/samples/cnn_*.json`.
   a faithful M1-native reimplementation of AWQ's per-output-channel
   scaling search, and use it as the AWQ column.
 - **TinyLlama-1.1B AWQ-like OOM'd** at the 21-point grid search step
-  (peak >19 GiB on MPS, 8 GB budget). We document this honestly rather
-  than silently swap baselines.
-- **TinyLlama-1.1B TRIAD also OOM'd** at the GPTQ Cholesky-inverse step
-  on the 2048×2048 transformed Hessian (peak >20 GiB on MPS). Three
-  attempts (default sweep, low-mem retry with `n_calib=8 / seq_len=512`,
-  and a third with the Gram offloaded to CPU during accumulation) all
-  ran into the same wall. Putting the per-layer Hessian operations on
-  CPU would fix this but moves a substantial fraction of the pipeline
-  off the Metal backend that the brief targets, so we document the
-  limitation rather than silently re-engineer. The TinyLlama RTN row
-  is still included to show that 4-bit RTN does work on this model on
-  M1 (PPL 8.87 vs FP32 8.45).
-- **Bit allocator default.** When the target is an integer in {3, 4} the
-  Lagrangian relaxation of eq (2) snaps bimodally onto {3, 8} which
-  destroys quality. We default to *uniform* bits in those cases (see
-  `compile.py` for rationale) and use the rate-distortion split only at
-  fractional targets. This is a deliberate deviation from the paper
-  pseudocode; `bit_allocator="trace"` still calls the watershed
-  allocator, but for integer targets the result is uniform.
+  (peak >19 GiB on MPS, 8 GB budget). v2 stops using the M1-native
+  AWQ-like reimplementation as a primary baseline — `experiments/baselines/
+  run_autoawq.py` invokes the official `autoawq` on the 4090 host instead.
+- **TinyLlama-1.1B v1 TRIAD OOM** at the GPTQ Cholesky-inverse step
+  (2048×2048 transformed Hessian, peak >20 GiB on MPS) is the limitation
+  v2 directly addresses. `triad_ptq.utils.device.safe_cholesky_inverse`
+  (Phase A6) adds a CPU/fp64 fallback when the input device is MPS
+  and the dim ≥ 4096; the v2 path through compile_model uses this
+  automatically. Combined with the 4090 host for production calibration,
+  TinyLlama-1.1B end-to-end calibration is no longer a blocker.
+- **Bit allocator (v1).** The trace router collapsed to a uniform
+  allocation at integer bit targets — `bit_allocator='uniform'` is the
+  de-facto default. v2 retires the rate-distortion watershed entirely;
+  the v2 sensitivity probe is the Squisher Fisher diagonal
+  (`triad_ptq/_v2/router/squisher.py`), correlated ≥ 0.7 with
+  Hutchinson on a 2-layer toy MLP across 5 seeds (mean 0.81; results
+  archived in `results/v2/phase_b_squisher_correlation.json`).
 - **Tier-2 / Tier-3 models skipped.** Llama-3.2-1B, Phi-2 (2.7 B),
   SmolLM-1.7 B, Qwen2.5-{0.5,1.5}B, SmolVLM are not in this benchmark
   table. With 8 GB unified memory, FP32 forward of a 1.7 B+ model already
@@ -455,6 +537,16 @@ results/
   year         = {2026},
   howpublished = {Preprint, May 2026},
   note         = {DOI: pending}
+}
+
+@misc{katolikov2026spectraq,
+  author       = {Artem Katolikov},
+  title        = {{SPECTRA-Q}: Squisher Fisher routing, learnable per-block beta,
+                  and channel-INT8 super-weights for byte-compatible MLC q4f16\_1
+                  deployment on edge GPUs},
+  year         = {2026},
+  howpublished = {Preprint, v2.0.0-alpha branch \texttt{v2-spectra}, May 2026},
+  note         = {Companion to TRIAD-PTQ v1.0.0; DOI: pending}
 }
 ```
 

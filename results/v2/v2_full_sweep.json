@@ -1,0 +1,13 @@
+{
+  "schema": "v2_full_sweep/0",
+  "status": "PLACEHOLDER",
+  "branch": "v2-spectra",
+  "tag": "v2.0.0-alpha",
+  "created_utc": "2026-05-06T00:00:00Z",
+  "note": "Reserved for the Phase H runbook (RTX 4090 + Galaxy Z Flip7). The runbook will overwrite this file with the measured H2 evaluation matrix (4 models x 8 baselines x 2 devices x WT2 PPL + zero-shot suite + N=10 paired-t decode_tps). See docs/decisions/017-h2-h4-hardware-deferred.md for the contract. Until that runbook completes, this file is empty by design — no v2 model-and-device numbers are claimed in the README, STATUS, or REPORT.",
+  "models": [],
+  "baselines": [],
+  "metrics": [],
+  "devices": [],
+  "rows": []
+}

@@ -1,4 +1,15 @@
-# TRIAD-PTQ Exynos session 3 — STATUS
+# TRIAD-PTQ — STATUS
+
+> **2026-05-06 update — `v2-spectra` branch (v2.0.0-alpha).**
+> SPECTRA-Q (v2) Phases A–I have all landed on `v2-spectra`. The branch
+> is open as a PR off `main` and tagged `v2.0.0-alpha` after merge.
+> 155 tests pass + 5 skip (was 45 + 1 at v0.3.0-session3). All v2
+> *code paths* run end-to-end on synthetic fixtures; H2–H4 model-and-
+> device measurements are deferred to a runbook (ADR-017). The
+> session-3 numbers below remain the current published headline until
+> the runbook produces v2 numbers.
+
+# TRIAD-PTQ Exynos session 3 — STATUS (v0.3.0-session3, historical)
 
 Wall-clock used: ~6 h.
 Outcome: **success** — Phases 0/1/2/4 shipped, Phase-2 produced a
