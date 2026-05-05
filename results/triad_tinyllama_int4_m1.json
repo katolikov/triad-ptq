@@ -1,0 +1,19 @@
+{
+  "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+  "method": "TRIAD",
+  "bits": 4,
+  "group_size": 64,
+  "n_calib": 8,
+  "seq_len_calib": 512,
+  "super_weight_frac": 0.0005,
+  "calib_sec": 1555.5737169579952,
+  "peak_mps_gb_during_calib": 12.194086912,
+  "ppl_wikitext2": 11.477070939890762,
+  "ppl_n_tokens": 4088,
+  "ppl_sec": 11.454657791007776,
+  "ppl_eval_device": "cpu",
+  "ppl_seq_len": 512,
+  "ppl_max_tokens": 4096,
+  "checkpoint_path": "/tmp/triad-tinyllama-int4/model.pt",
+  "checkpoint_size_mb": 4540.111631
+}

@@ -71,7 +71,26 @@ def main():
 
     rows.append(_row("FP16 (reference)", fp16, bits=16))
     rows.append(_row("MLC q4f16_1 (community baseline)", base, bits=4))
-    rows.append(_row("**TRIAD-INT4 (this work)**", triad_dev, bits=4))
+    # If on-device numbers aren't ready, fall back to the M1-side PPL so the
+    # quality acceptance can still be evaluated; throughput/memory remain
+    # blank with a STATUS.md pointer.
+    if triad_dev is None and triad_m1 is not None:
+        merged = dict(triad_m1)
+        merged.setdefault("ppl_wikitext2", triad_m1.get("ppl_wikitext2"))
+        rows.append(_row("**TRIAD-INT4 (this work, M1 quality only)**", merged, bits=4))
+    else:
+        rows.append(_row("**TRIAD-INT4 (this work)**", triad_dev, bits=4))
+
+    # Acceptance check on quality
+    if fp16 and (triad_dev or triad_m1):
+        fp16_ppl = float(fp16.get("ppl_wikitext2") or 0.0)
+        triad_src = triad_dev or triad_m1
+        triad_ppl = float(triad_src.get("ppl_wikitext2") or 0.0)
+        delta = triad_ppl - fp16_ppl
+        verdict = "PASS" if delta <= 1.0 else "FAIL"
+        rows.append(["", "", "", "", "", "", ""])
+        rows.append([f"_PPL delta_ ({fp16_ppl:.3f} → {triad_ppl:.3f})", "", f"+{delta:.3f}",
+                     f"_acc ≤ +1.0_", verdict, "", ""])
 
     # Render Markdown
     header = ["Method", "Bits", "WikiText-2 PPL", "HellaSwag",

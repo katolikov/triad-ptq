@@ -1,0 +1,11 @@
+{
+  "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+  "method": "FP16",
+  "bits": 16,
+  "device": "cpu",
+  "ppl_wikitext2": 10.881850318990464,
+  "ppl_n_tokens": 4088,
+  "ppl_sec": 33.02431504201377,
+  "ppl_seq_len": 512,
+  "ppl_max_tokens": 4096
+}

@@ -1,0 +1,10 @@
+{
+  "output_dir": "/tmp/triad-tinyllama-int4-mlc",
+  "shard": "/tmp/triad-tinyllama-int4-mlc/params_shard_0.bin",
+  "n_quant_layers": 155,
+  "n_skipped_conv_layers": 0,
+  "skipped_conv": [],
+  "shard_size_mb": 777.76896,
+  "fold_U": true,
+  "fold_super_weights": true
+}
