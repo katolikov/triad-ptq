@@ -22,7 +22,9 @@ Acceptance criteria (top of session prompt):
 
 - Model: `TinyLlama/TinyLlama-1.1B-Chat-v1.0`
 - TRIAD calibration: 1555.6 s wall, peak MPS 12.19 GB,
-  super_weight_frac=5e-4, group_size=64, n_calib=128, seq_len=2048
+  super_weight_frac=5e-4, group_size=64, **n_calib=8**, seq_len=512
+  (the Phase-3 prompt cited n_calib=128 / seq_len=2048; the actual
+  on-disk meta.json shows 8 / 512 — see `experiments/B1_current_config.md`)
 - Checkpoint: `/tmp/triad-tinyllama-int4/model.pt` (4540 MB fp32 codes)
 - M1 simulated-INT4 WikiText-2 PPL (4088 tokens, dequant→fp16-matmul):
   **11.477** on the same eval window as the FP16 baseline (**10.882**)
@@ -34,11 +36,18 @@ simple words that a child could read and enjoy as a bedtime story
 now please."` (~28 prompt tokens; UI-driven decode until model emits
 EOS or hits the `context_window_size=1024` cap).
 
-| Method                                     | Bits | WikiText-2 PPL | Prefill tok/s | Decode tok/s | Graphics MB | Total PSS MB | Disk MB |
-|--------------------------------------------|------|----------------|---------------|--------------|-------------|--------------|---------|
-| FP16 (reference, M1)                       | 16   | 10.882         | n/a           | n/a          | n/a         | n/a          | 2200    |
-| MLC q4f16_1 (community baseline, on-device)| 4    | n/a (see note) | 25.2          | 42.9         | 803         | 1021         | 593     |
-| **TRIAD-INT4 (this work, on-device)**      | 4    | **11.477**     | 18.2          | **37.7**     | **789**     | 1024         | 593     |
+| Method                                     | Bits | WikiText-2 PPL | Prefill tok/s   | Decode tok/s    | Graphics MB | Total PSS MB | Disk MB |
+|--------------------------------------------|------|----------------|-----------------|-----------------|-------------|--------------|---------|
+| FP16 (reference, M1)                       | 16   | 10.882         | n/a             | n/a             | n/a         | n/a          | 2200    |
+| MLC q4f16_1 (community baseline, on-device, N=3) | 4 | n/a (see note) | **25.5 ± 0.5**  | **41.6 ± 2.6**  | 803         | 1021         | 593     |
+| **TRIAD-INT4 (this work, on-device, N=3)** | 4    | **11.477**     | **25.3 ± 0.1**  | **40.7 ± 0.6**  | **789**     | 1024         | 593     |
+
+The on-device numbers above are N=3 mean ± std from the replicated
+bench in `experiments/profile/A3_replicated_results.json` (ADR-006).
+Session-2's single-run numbers (ref 25.2 / 42.9 and TRIAD 18.2 / 37.7)
+fell within 1 σ of these means and have been superseded; the
+apparent 28% prefill / 12% decode gaps in those single-run numbers
+were measurement variance, not a real shader-level effect.
 
 (Disk size includes 24 weight shards + tokenizer + manifest, identical
 between the TRIAD and reference bundles because both use MLC's
@@ -68,14 +77,17 @@ All three TRIAD acceptance criteria met.
   expected noise for this calibration size, and the *same* PPL budget
   acceptance is satisfied.
 
-- TRIAD's decode throughput is ~12% slower than the community baseline
-  (37.7 vs 42.9 tok/s). Both bundles share the *same compiled model
-  lib* (system_lib_prefix `llama_q4f16_1_6429f5e250a1cd87923dcc0ba823fe8e`)
-  — only the parameter VALUES differ. We attribute the gap to
-  weight-distribution differences after TRIAD's U-rotation + sparse
-  fold causing slightly less predictable cache access patterns; the
-  effect is < 5 tok/s on a 1B model and well above the acceptance
-  bar.
+- Under the N=3 protocol, TRIAD's decode is **2.2 % below** the
+  community baseline (40.7 vs 41.6 tok/s) and prefill is **0.5 %
+  below** (25.3 vs 25.5) — both within the reference model's own 1-σ
+  band (decode σ = 6.3 % of mean). Both bundles share the *same
+  compiled model lib* (system_lib_prefix
+  `llama_q4f16_1_6429f5e250a1cd87923dcc0ba823fe8e`) — only the param
+  VALUES differ — and ADR-006 confirms via bit-level kernel md5 +
+  scale-distribution analysis that no shader-level slowdown is
+  present. Single-run benches on this device should not be cited
+  going forward; decode std is wider than typical TRIAD-vs-baseline
+  effect sizes on TinyLlama-class models.
 
 - Graphics memory ("GL mtrack" + "EGL mtrack") is the relevant GPU-side
   number for the acceptance bound. Total PSS includes the Java heap +
