@@ -1,0 +1,8 @@
+{
+  "hf_safetensors_dir": "/tmp/triad-tinyllama-int4-v2-hf",
+  "mlc_bundle_dir": "/tmp/triad-tinyllama-int4-v2-mlc",
+  "mlc_bundle_size_mb": 621.856701,
+  "tar_path": "/tmp/triad-tinyllama-int4-v2-mlc/lib/triad-tinyllama-v2-android.tar",
+  "tar_present": true,
+  "hf_safetensors_size_mb": 2200.119664
+}

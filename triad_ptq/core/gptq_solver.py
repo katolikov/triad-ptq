@@ -105,6 +105,14 @@ def gptq_quantize_layer(
     clip-ratio search before the per-group scale/zero are computed
     inside the Cholesky update. Picked ratio shrinks (wmin, wmax)
     multiplicatively, absorbing outliers without spreading the grid.
+
+    WARNING: as of 2026-05-05, ``clip_search=True`` is research-only.
+    On TinyLlama-1.1B it lowers eval-window PPL by ~0.13 but causes
+    autoregressive generation to collapse into degenerate repetition
+    on-device. Do NOT enable for production calibration without first
+    (a) validating coherent generation on a held-out prompt and
+    (b) considering the literature-aligned variants described in
+    ``docs/decisions/007-ppl-improvements-v2.md``.
     """
     assert W.ndim == 2 and H.shape == (W.size(1), W.size(1))
     dev = W.device
