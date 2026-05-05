@@ -1,0 +1,105 @@
+{
+  "phase": "D",
+  "fixture": "_MiniBlock(d=64, hidden=128, GELU)",
+  "protocol": "BRECQ MSE loss; 100 Adam steps lr=2e-2 batch=8 group_size=32",
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "no_lwc": {
+    "final_beta_mean": 0.05000000074505806,
+    "reduction_pct_mean": 6.283394634870025,
+    "detail": [
+      {
+        "seed": 0,
+        "beta": 0.05000000074505806,
+        "saturated": true,
+        "init_loss_avg5": 0.00305642643943429,
+        "final_loss_avg5": 0.002893420308828354,
+        "reduction_pct": 5.333226034915029
+      },
+      {
+        "seed": 1,
+        "beta": 0.05000000074505806,
+        "saturated": true,
+        "init_loss_avg5": 0.0030516217462718486,
+        "final_loss_avg5": 0.002868148870766163,
+        "reduction_pct": 6.012307250393456
+      },
+      {
+        "seed": 2,
+        "beta": 0.05000000074505806,
+        "saturated": true,
+        "init_loss_avg5": 0.0030726430471986533,
+        "final_loss_avg5": 0.0027447408996522427,
+        "reduction_pct": 10.671664183230167
+      },
+      {
+        "seed": 3,
+        "beta": 0.05000000074505806,
+        "saturated": true,
+        "init_loss_avg5": 0.0028430836740881205,
+        "final_loss_avg5": 0.002816351968795061,
+        "reduction_pct": 0.9402363193420027
+      },
+      {
+        "seed": 4,
+        "beta": 0.05000000074505806,
+        "saturated": true,
+        "init_loss_avg5": 0.0030786747578531505,
+        "final_loss_avg5": 0.0028182330541312696,
+        "reduction_pct": 8.459539386469473
+      }
+    ]
+  },
+  "with_lwc": {
+    "final_beta_mean": 0.05000000074505806,
+    "reduction_pct_mean": 6.1739347961255735,
+    "detail": [
+      {
+        "seed": 0,
+        "beta": 0.05000000074505806,
+        "saturated": true,
+        "init_loss_avg5": 0.0030315457843244076,
+        "final_loss_avg5": 0.002936818078160286,
+        "reduction_pct": 3.1247328229031535
+      },
+      {
+        "seed": 1,
+        "beta": 0.05000000074505806,
+        "saturated": true,
+        "init_loss_avg5": 0.003112367261201143,
+        "final_loss_avg5": 0.002902516815811396,
+        "reduction_pct": 6.742470530574874
+      },
+      {
+        "seed": 2,
+        "beta": 0.05000000074505806,
+        "saturated": true,
+        "init_loss_avg5": 0.00311596249230206,
+        "final_loss_avg5": 0.0026859743520617485,
+        "reduction_pct": 13.79952875885352
+      },
+      {
+        "seed": 3,
+        "beta": 0.05000000074505806,
+        "saturated": true,
+        "init_loss_avg5": 0.002872279519215226,
+        "final_loss_avg5": 0.0028072205837816,
+        "reduction_pct": 2.265062818517116
+      },
+      {
+        "seed": 4,
+        "beta": 0.05000000074505806,
+        "saturated": true,
+        "init_loss_avg5": 0.0030821515712887047,
+        "final_loss_avg5": 0.002929958654567599,
+        "reduction_pct": 4.9378790497792036
+      }
+    ]
+  },
+  "acceptance": "BRECQ loss decreases over 100 steps; \u03b2 stays in [0.05, 0.95]; LWC \u03b1 stays in [0.5, 1.0]"
+}

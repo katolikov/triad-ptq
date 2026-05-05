@@ -38,14 +38,14 @@ V2_LEAF_MODULES = [
 # UNIMPLEMENTED set and into the IMPLEMENTED set. Phase B implements
 # triad_ptq._v2.router.squisher.
 V2_LEAF_MODULES_UNIMPLEMENTED = [
-    "triad_ptq._v2.transform.learnable_beta",
     "triad_ptq._v2.superweight.channel_int8",
-    "triad_ptq._v2.lwc.selective",
     "triad_ptq._v2.groupsize.sweep",
 ]
 V2_LEAF_MODULES_IMPLEMENTED = [
     "triad_ptq._v2.router.squisher",
     "triad_ptq._v2.rotation.sign_perm",
+    "triad_ptq._v2.transform.learnable_beta",
+    "triad_ptq._v2.lwc.selective",
 ]
 
 
@@ -69,10 +69,11 @@ def test_v2_leaf_module_marked_implemented(modname: str) -> None:
 
 
 def test_v2_unimplemented_leaves_raise_not_implemented() -> None:
-    from triad_ptq._v2.transform import learnable_beta
+    from triad_ptq._v2.superweight import channel_int8
+    from triad_ptq._v2.groupsize import sweep  # noqa: F401
 
     with pytest.raises(NotImplementedError):
-        learnable_beta.train_learnable_beta()
+        channel_int8.select_super_channels()
 
 
 # --------------------------------------------------------------------- A3
