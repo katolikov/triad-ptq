@@ -310,8 +310,17 @@ def compile_model(
                 if k_count > 0:
                     flat = kp.flatten()
                     top_idx = torch.topk(flat, min(k_count, flat.numel())).indices
-                    r = (top_idx // kp.size(1)).to(W_prime.device)
-                    c = (top_idx % kp.size(1)).to(W_prime.device)
+                    # Defensive clamp: on MPS the integer-divide on a large
+                    # final-FC layer (lm_head, m=32000) was observed to
+                    # produce exactly `m` (one past the last valid row),
+                    # crashing the later gather at
+                    # W_prime[sw_rows, sw_cols] with
+                    # 'index 32000 is out of bounds: 0, range 0 to 32000'.
+                    m_p, n_p = W_prime.size(0), W_prime.size(1)
+                    r = ((top_idx // kp.size(1)).clamp_(0, m_p - 1)
+                         .to(W_prime.device))
+                    c = ((top_idx % kp.size(1)).clamp_(0, n_p - 1)
+                         .to(W_prime.device))
                     del flat, top_idx
                 del kp, est_absXp
             sw_rows = r.cpu()
