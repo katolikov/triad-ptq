@@ -90,6 +90,40 @@ def main() -> None:
             "n_layers": meta.get("n_layers"),
             "n_asym_layers": len(meta.get("asymmetry_per_layer", {})),
         }
+        # Per-layer Phase-2 diagnostic dump (only present when asym=True).
+        if asym and meta.get("asymmetry_per_layer"):
+            per_layer = meta["asymmetry_per_layer"]
+            slim = []
+            for layer_name, mm in per_layer.items():
+                slim.append({
+                    "name": layer_name,
+                    "layer_idx": mm.get("layer_idx"),
+                    "bits": mm.get("bits"),
+                    "frob_delta_rel": mm.get("frob_delta_rel"),
+                    "cross_off_diag_rel": mm.get("cross_off_diag_rel"),
+                    "W_norm_pre": mm.get("W_norm_pre"),
+                    "W_norm_post": mm.get("W_norm_post"),
+                    "W_delta_rel": mm.get("W_delta_rel"),
+                    "row_max_ratio_p50": mm.get("row_max_ratio_p50"),
+                    "row_max_ratio_p99": mm.get("row_max_ratio_p99"),
+                    "row_max_ratio_max": mm.get("row_max_ratio_max"),
+                    "asym_recon_loss_proxy": mm.get("asym_recon_loss_proxy"),
+                    "sym_recon_err_under_Hpost": mm.get("sym_recon_err_under_Hpost"),
+                })
+            rec["per_layer"] = slim
+            import statistics as _s
+            wdrs = [x["W_delta_rel"] for x in slim if x["W_delta_rel"] is not None]
+            rmrs = [x["row_max_ratio_max"] for x in slim if x["row_max_ratio_max"] is not None]
+            srl = [x["sym_recon_err_under_Hpost"] for x in slim
+                   if x["sym_recon_err_under_Hpost"] is not None]
+            if wdrs:
+                rec["W_delta_rel_p50"] = _s.median(wdrs)
+                rec["W_delta_rel_max"] = max(wdrs)
+            if rmrs:
+                rec["row_max_ratio_p50_overall"] = _s.median(rmrs)
+                rec["row_max_ratio_max_overall"] = max(rmrs)
+            if srl:
+                rec["sym_recon_err_total"] = sum(srl)
         results.append(rec)
         console.log(
             f"  PPL={rec['ppl']:.4f} on {rec['n_tokens']} tokens "
