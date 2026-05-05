@@ -1,8 +1,17 @@
-# ADR-007: Stream B PPL improvements — code complete, calibration deferred (pre-existing super-weight bug)
+# ADR-007: Stream B PPL improvements — clip_search lowers eval PPL but breaks generation; do NOT enable
 
 Status: **Awaiting-review**
 Date: 2026-05-05
 Branch: `feat/exynos-improve-ppl`
+
+## TL;DR
+
+The B.4 clip-search intervention reduces 4096-token WikiText-2 PPL
+from **11.477 → 11.347 (-0.130)** but causes the deployed v2 model
+to **emit degenerate, repetitive text** ("The the-l-i-c- and the the-
+l-i-c-..." — see `experiments/screenshots/v2-garbage-output.png`).
+The eval-window PPL gain is real but does not transfer to coherent
+autoregressive generation. **Do not enable clip_search by default.**
 
 ## Context
 
@@ -32,10 +41,10 @@ addition; B.5 was already in place.
 
 ## What landed in code
 
-### B.4 — per-group clip search (committed)
+### B.4 — per-group clip search (committed, default OFF)
 
-`triad_ptq/core/gptq_solver.py` gains a new helper `_find_clip` and
-a `clip_search: bool` kwarg on `gptq_quantize_layer`. When enabled:
+`triad_ptq/core/gptq_solver.py` gains a new helper `_find_clip` and a
+`clip_search: bool` kwarg on `gptq_quantize_layer`. When enabled:
 1. before the per-group scale/zero are computed, sweep
    `ratios = (1.0, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7)` and for each row
    pick the ratio that minimises an activation-weighted RTN MSE,
@@ -55,23 +64,13 @@ convention. Without that fix, every call would pick the smallest
 ratio because the dq formula was monotonically advantaged by smaller
 scale.
 
-Tests added (`tests/test_clip_search.py`):
-
-- `test_clip_search_reduces_mse_with_outliers`
-- `test_clip_search_idempotent_on_uniform`
-- `test_gptq_quantize_layer_clip_search_flag_runs`
-- `test_gptq_quantize_layer_clip_search_helps_on_realistic_outliers`
-
-Full suite: 29/29 (was 25).
+Tests added (`tests/test_clip_search.py`, 4 tests; full suite 33/33
+green).
 
 ### B.2 — n_calib bump (committed, calibration script only)
 
 `experiments/16_tinyllama_phase3_v2.py` mirrors the v1 entrypoint but
-sets `n_calib=64` (8× the v1 setting). The Phase-3 stretch goal of
-n_calib=256 was not chosen because, at v1's measured ratio of
-profile time to Cholesky time, that projects to ~7 hours on M1 and
-the GPTQ paper's Figure 3 shows the PPL/n curve flattens well before
-n=64.
+sets `n_calib=64` (8× the v1 setting).
 
 ### B.3 — GPTAQ (deferred)
 
@@ -86,91 +85,153 @@ Deferred for a future session; no code added.
 Confirmed `_quantize_group` and the GPTQ loop both already store
 per-group `(scale, zero_point)` pairs.
 
-## What did NOT land — calibration crash
+### Pre-existing super-weight crash fix (independent value)
 
-Calibration with `n_calib=64` and `clip_search=True` ran for **66
-minutes** on M1 (11:08 → 12:14) before crashing during the per-layer
-GPTQ pass:
+The first v2 calibration attempt crashed at `compile.py:335` with
+`torch.AcceleratorError: index 32000 is out of bounds: 0, range 0
+to 32000` on TinyLlama's `lm_head` (`m=32000`). The MPS path
+through `top_idx // kp.size(1)` produced exactly `m`. Defensive
+clamp added; CPU-side regression tests in
+`tests/test_super_weight_index_bounds.py` (4 tests). The bug is
+independent of clip_search; v1 (n_calib=8) just never hit a top-k
+boundary that exposed it. Crash log preserved at
+`experiments/v2-artifacts/v2_calib_full.log`.
+
+## v2 calibration outcome
+
+After the clamp fix, the v2 calibration completed cleanly:
+
+|                              | v1 (baseline) | v2 (clip_search + n_calib=64) |
+|------------------------------|--------------:|------------------------------:|
+| n_calib                      | 8             | 64                            |
+| clip_search                  | off           | on                            |
+| Calibration wall clock       | 1556 s        | 3364 s                        |
+| Peak MPS during calib        | 12.19 GB      | 13.74 GB                      |
+| WikiText-2 PPL (4088 tokens) | 11.477        | **11.347**                    |
+| FP16 baseline (same window)  | 10.882        | 10.882                        |
+| Gap above FP16               | +0.595        | **+0.465**                    |
+
+The eval-window PPL improvement is **0.130** — short of the 0.15
+acceptance band but well above measurement noise.
+
+`results/triad_tinyllama_int4_v2_m1.json` captures the run.
+
+## v2 device deployment outcome
+
+The v2 bundle was exported via `experiments/17_export_mlc_v2.py`
+(canonical `mlc_llm convert_weight + compile`, same device target
+as v1). Compiled artefact:
+`/tmp/triad-tinyllama-int4-v2-mlc/lib/triad-tinyllama-v2-android.tar`,
+total memory with 4K KV cache 804 MB. The OpenCL device-code object
+md5 matches v1 exactly (`586216b8…ed8b`); only the param shards
+differ.
+
+The v2 bundle was pushed to the device, staged into MLCChat's
+internal storage at `/data/data/ai.mlc.mlcchat/files/triad-tinyllama-int4`
+(replacing v1; v1 backed up to `triad-tinyllama-int4-v1bak`),
+verified by md5 of `params_shard_0.bin`
+(`5edd0d32c4a2bf4699623b8ded541411`, matches v2 host).
+
+On running the same prompt that produced coherent (if uninspired)
+poetry under v1 ("Now please tell me all about how apples and
+bananas make you sing..."), v2 produced **degenerate output**:
 
 ```
-File ".../triad_ptq/compile.py", line 335, in compile_model
-    del W_dq
-torch.AcceleratorError: index 32000 is out of bounds: 0, range 0 to 32000
+The the-l-i-c- and the the-l-i-c- and the the-l-i-c-
+The the-l-i-c- and the the-l-i-c-
+The the-l-i-c- and the the-l-i-c- and the the-l-i-c-
+…
 ```
 
-The full log is preserved at
-`experiments/B6_v2_calibration_crash.log`.
+(See `experiments/screenshots/v2-garbage-output.png`.)
 
-`32000` is the TinyLlama vocabulary size (= number of rows in
-`lm_head.weight`). MPS reports the error at the next synchronisation
-boundary (`del W_dq`), but the actual offending op is the indexing
-on lines 332-334:
+This is a classic PTQ failure mode where the **eval-window
+cross-entropy improves but generation collapses**. Pre-clamping
+weights destroys the dynamic range needed for autoregressive
+sampling: the model still produces a "decent" distribution
+*on average* over a fixed test set (hence the slightly better PPL),
+but the modes that the sampler picks during sequential generation
+become degenerate — typically because the pre-clamping wipes out
+the rare large weights that gate attention to specific tokens or
+positions, causing the head to collapse onto a narrow few
+high-frequency tokens.
 
-```python
-W_prime[sw_rows.to(W_prime.device), sw_cols.to(W_prime.device)]
-- W_dq[sw_rows.to(W_prime.device), sw_cols.to(W_prime.device)]
-```
+This effect is well documented in PTQ literature for aggressive
+clip ratios (e.g. AWQ paper §4.3 discussing why their grid search
+is conservative, OmniQuant §3.2). Our 0.7 floor on the ratio sweep
+is too aggressive; the implementation also pre-clamps `Wq` rather
+than just adjusting the per-group `(scale, zero)` pair while
+leaving `W` untouched, which literature variants typically avoid.
 
-The path that fills `sw_rows` for layers with `U is not None`
-(compile.py:307-313) re-runs `compute_kappa` in the transformed
-basis and selects top-k by flattened index:
-
-```python
-top_idx = torch.topk(flat, min(k_count, flat.numel())).indices
-r = (top_idx // kp.size(1)).to(W_prime.device)
-c = (top_idx % kp.size(1)).to(W_prime.device)
-```
-
-For `lm_head` (`m=32000, n=2048`) we expect `top_idx // 2048` to
-yield values in `[0, 31999]`, which is in range. The crash implies
-either `kp.size(1)` is not `n` for this layer, or `top_idx` is
-exceeding `m * n` somewhere. The bug is **pre-existing** — it does
-not depend on Stream B's `clip_search` change; it is sensitive to
-`n_calib` only inasmuch as the rho-probe outcome influences which
-super-weights are selected for `lm_head`.
+The device weights were restored to v1 immediately after this
+discovery (md5 verified back to v1's `472cd3f6…530a`).
 
 ## Decision
 
-**Stream B ships as code-only** (clip_search implementation +
-tests, n_calib bump in the v2 calibration script). The v2
-calibration is not run; v1 numbers stand in
-`results/exynos_comparison.md`.
+Stream B ships with:
 
-The pre-existing super-weight bug is a separate workstream:
-- Branch a fix on top of `feat/exynos-cholesky-fix` (where the
-  super-weight code last had attention).
-- The minimal repro is `experiments/16_tinyllama_phase3_v2.py` with
-  `super_weight_frac=5e-4` and `n_calib=64` on TinyLlama-1.1B; the
-  crash is deterministic.
-- Once fixed, re-run `experiments/16_tinyllama_phase3_v2.py` and
-  `experiments/17_export_mlc_v2.py` (already committed) to produce
-  the v2 device bundle.
+- The **clip_search code path implemented**, threaded, and tested,
+  but **default OFF** in `triad_ptq.api.optimize`. Nothing changes
+  for callers who do not pass `clip_search=True`.
+- The **super-weight OOB clamp fix** (independent value; no
+  generation impact).
+- A clear instruction in the docstring of `gptq_quantize_layer`
+  and in this ADR that `clip_search=True` **MUST** be validated by
+  qualitative generation, not only by PPL, on each new model.
+- The B.4 implementation is **not** declared "ready for production
+  on TinyLlama-1.1B." Treat as research-only.
+
+The v2 PPL number is preserved in
+`results/triad_tinyllama_int4_v2_m1.json` for completeness, but the
+v1 bundle remains the authoritative TRIAD-INT4 deployment for this
+project.
+
+## Future work (for a follow-up session)
+
+Per the v2 generation collapse, a follow-up would be:
+
+1. **Tighten the ratio range.** Try `(1.0, 0.99, 0.98, 0.97, 0.96,
+   0.95)` so the per-group range never shrinks below 95 %. Several
+   AWQ implementations cap at 0.92.
+2. **Don't pre-clamp Wq.** Keep the original W; only adjust the
+   per-group `(scale, zero)` derived from the chosen ratio. The
+   GPTQ Cholesky then absorbs the clamping error as part of its
+   normal residual propagation, and outliers retain their
+   magnitudes in the per-column update term.
+3. **Add a generation smoke check to the v2 calibration script.**
+   After the PPL eval, sample 64 tokens from a fixed prompt and
+   assert the entropy-of-token-frequency is above some threshold
+   (e.g. ≥ 3.0 bits) — repetitive collapse drops it well below.
+4. Potentially **gate clip_search per-layer** rather than per-row,
+   only enabling on layers where outlier weights are
+   demonstrably (a) rare and (b) coincide with low-variance input
+   columns.
 
 ## Acceptance status
 
-- B.1 audit: **DONE** (`experiments/B1_current_config.md`).
-- B.2 n_calib bump: **CODE DONE**, calibration not completed.
-- B.3 GPTAQ: **DEFERRED** with rationale.
-- B.4 clip_search: **CODE DONE + tests pass**, calibration not
-  completed.
-- B.5 asymmetric quant verify: **DONE**.
-- B.6 device bench v2: **NOT RUN** (no v2 bundle).
-- B.7 tests: **DONE**, 29/29 green (4 new).
+- B.1 audit: **DONE**
+- B.2 n_calib bump: **CODE DONE**, calibration completed
+- B.3 GPTAQ: **DEFERRED** with rationale
+- B.4 clip_search: **CODE DONE + tests pass**, calibration showed
+  PPL gain BUT generation is broken; **do not enable by default**
+- B.5 asymmetric quant verify: **DONE**
+- B.6 device bench v2: ATTEMPTED; aborted after observing degenerate
+  output. v1 device bundle restored, untouched by this session.
+- B.7 tests: **DONE**, 33/33 green (8 new vs session start)
 - B.8 ADR-007: this document.
 
-The "M1 PPL improvement ≥ 0.15" acceptance is **not demonstrated in
-this session**. The PR for `feat/exynos-improve-ppl` is therefore a
-draft with the new code paths gated behind opt-in flags
-(`clip_search=False` by default), ready to be activated once the
-super-weight crash is resolved.
+The "M1 PPL improvement ≥ 0.15" acceptance is **not met**: 0.130
+PPL gain on the eval window, and that gain itself is invalidated by
+the deployment-side generation collapse.
 
 ## Consequences
 
-- The v1 device bundle and the v1 device numbers remain authoritative
-  in the final report.
-- `results/exynos_comparison.md` is updated with N=3 means from
-  Stream A's replicated bench (ADR-006), which strengthens the v1
-  claim irrespective of whether v2 ever lands.
-- No Stream B branch is pushed this session; the user decides
-  whether to merge the code-only changes as-is or wait for the
-  super-weight fix + v2 numbers.
+- The v1 device bundle and v1 device numbers (now N=3, see
+  ADR-006) remain authoritative.
+- The PR for `feat/exynos-improve-ppl` is a draft. Recommended
+  status: **do not merge as-is**; the clip_search code is correct
+  but its naive activation is harmful. Either land the
+  default-off code paths with the warning in the docstring, or
+  drop the clip_search commits and keep only the super-weight
+  clamp + n_calib script + tests for a future v2 attempt with
+  a less aggressive ratio sweep and no pre-clamp.
