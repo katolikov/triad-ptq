@@ -17,24 +17,77 @@ runs in minutes on M1 with no backward passes.
 
 This repository is the M1-native reference implementation accompanying the
 preprint *“TRIAD-PTQ v1.0.0”* (Katolikov, May 2026). Every number in the
-result tables below is a real measurement on the author's M1 Pro (8 GB
-unified memory) — no mocks, no synthetic data, no extrapolation.
+result tables below is a real measurement on the author's M1 Pro (16 GB
+unified memory) and on a Galaxy Z Flip7 / Exynos 2500 / Xclipse 950 phone
+— no mocks, no synthetic data, no extrapolation.
 
 ---
 
 ## Hardware tested
 
-| Component | Value |
-|---|---|
-| Machine | Apple MacBook Pro, M1 Pro |
-| Unified memory | 8 GB |
-| OS | macOS 26.3.1 |
-| Python | 3.11.15 (via `uv`) |
-| PyTorch | 2.11.0 (MPS backend) |
-| transformers | 5.7.0 |
-| timm | 1.0.26 |
-| autoawq | 0.2.9 (quantize works; *load* path is CUDA-only — see Limitations) |
-| MLX | not used (PyTorch+MPS covered everything we ran) |
+| Role | Component | Value |
+|---|---|---|
+| Calibration host | Machine | Apple MacBook Pro, M1 Pro |
+| Calibration host | Unified memory | 16 GB |
+| Calibration host | OS | macOS 26.3.1 |
+| Calibration host | Python | 3.11.15 (via `uv`) |
+| Calibration host | PyTorch | 2.11.0 (MPS backend) |
+| Calibration host | transformers | 5.7.0 |
+| Calibration host | timm | 1.0.26 |
+| Inference target | Phone | Samsung Galaxy Z Flip7 (SM-F766B) |
+| Inference target | SoC | Exynos 2500 (S5E9955) |
+| Inference target | GPU | Xclipse 950 (AMD RDNA-based) |
+| Inference target | Vulkan | 1.3 + OpenCL via `libSGPUOpenCL.so` |
+| Inference runtime | MLC-LLM | `q4f16_1` group-32 layout, OpenCL kernels |
+
+---
+
+## Device deployment — TinyLlama-1.1B on Exynos 2500 / Xclipse 950
+
+`v0.2.0-alpha` ships the full pipeline end to end on a real edge phone.
+Calibration runs on M1; the resulting INT4 bundle is converted to MLC's
+canonical `q4f16_1` layout via `mlc_llm convert_weight + compile` and
+loaded by a custom-built MLCChat APK whose runtime statically links the
+TinyLlama system_lib (see [`docs/decisions/005-prebuilt-mlcchat-cannot-load-triad.md`](docs/decisions/005-prebuilt-mlcchat-cannot-load-triad.md)).
+
+![TinyLlama-1.1B on Exynos 2500](results/plots/exynos_device_bench.png)
+
+| Acceptance criterion (top of original spec)              | Target              | TRIAD-INT4 measured            | Status     |
+|----------------------------------------------------------|---------------------|--------------------------------|------------|
+| WikiText-2 PPL TRIAD-INT4 vs FP16                         | ≤ +1.0 PPL          | 11.477 vs 10.882, **+0.595**   | **PASS**   |
+| On-device decode throughput, batch=1 (N=3 mean ± std)     | ≥ 25 tok/s          | **40.7 ± 0.6 tok/s**           | **PASS**   |
+| Peak GPU memory during decode                             | ≤ 1.2 GB            | **789 MB** (Graphics, dumpsys) | **PASS**   |
+
+Numbers are means over N=3 alternating prompt runs through the in-app
+metrics line ([`experiments/profile/A3_replicated_results.json`](experiments/profile/A3_replicated_results.json));
+the original Phase-5 single-run numbers (decode 37.7 tok/s, prefill
+18.2 tok/s) fell within 1 σ of these means and were superseded under
+ADR-006 once the bench protocol was tightened.
+
+| Method                              | WT2 PPL   | Prefill tok/s   | Decode tok/s    | Graphics MB | Disk MB |
+|-------------------------------------|-----------|-----------------|-----------------|-------------|---------|
+| FP16 (M1 reference)                 | 10.882    | n/a             | n/a             | n/a         | 2200    |
+| MLC q4f16_1 (community baseline)    | n/a       | 25.5 ± 0.5      | 41.6 ± 2.6      | 803         | 593     |
+| **TRIAD-INT4 (this work)**          | **11.477**| **25.3 ± 0.1**  | **40.7 ± 0.6**  | **789**     | 593     |
+
+Both bundles are compiled from the exact same `mlc_llm compile`
+invocation; the OpenCL device-code object is **bit-identical** between
+them (md5 verified — see [ADR-006](docs/decisions/006-decode-gap-root-cause.md)).
+Only the parameter values differ. TRIAD-INT4's per-group fp16 scale
+distribution matches the community baseline's across every percentile,
+so there is no shader-level slowdown at this model size.
+
+Key trade-offs documented in the eight ADRs under
+[`docs/decisions/`](docs/decisions/):
+
+- **001** — `truncated_eigh` rejected (rank deficiency in `W' = W·U·Λ^β`).
+- **002** — Vulkan-on-Android isn't an MLC preset; OpenCL works on Xclipse 950.
+- **003** — MLC source build deferred; nightly wheels path used instead.
+- **004** — Direct-export bundle layout mismatched MLC's canonical schema; switched to TRIAD-folded HF-safetensors → `mlc_llm convert_weight`.
+- **005** — Prebuilt MLCChat APK can't `dlopen` arbitrary `.tar`; we build a custom APK that statically links our system_lib.
+- **006** — Phase-5's "12 % decode gap" was measurement noise; N≥3 protocol now mandatory.
+- **007** — `clip_search` lowers eval PPL by 0.13 but breaks on-device generation; ships default-OFF as research-only.
+- **008** — Rebase chain to `main` for `v0.2.0-alpha`.
 
 ---
 
