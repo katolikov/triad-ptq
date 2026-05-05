@@ -32,3 +32,7 @@ logs/
 
 # Pytest
 .pytest_cache/
+
+# Phase-0 probe build outputs (binaries cross-compiled for arm64-v8a; not
+# checked in — re-build with tools/build_probes.sh)
+tools/build/
