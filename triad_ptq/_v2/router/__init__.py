@@ -1,2 +1,2 @@
 """v2 router — Squisher Fisher diagonal (Phase B)."""
-from . import squisher  # noqa: F401
+from . import hutchinson_check, squisher  # noqa: F401

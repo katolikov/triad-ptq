@@ -34,6 +34,19 @@ V2_LEAF_MODULES = [
     "triad_ptq._v2.lwc.selective",
     "triad_ptq._v2.groupsize.sweep",
 ]
+# Phases land in order; once a phase ships, its leaf moves out of the
+# UNIMPLEMENTED set and into the IMPLEMENTED set. Phase B implements
+# triad_ptq._v2.router.squisher.
+V2_LEAF_MODULES_UNIMPLEMENTED = [
+    "triad_ptq._v2.rotation.sign_perm",
+    "triad_ptq._v2.transform.learnable_beta",
+    "triad_ptq._v2.superweight.channel_int8",
+    "triad_ptq._v2.lwc.selective",
+    "triad_ptq._v2.groupsize.sweep",
+]
+V2_LEAF_MODULES_IMPLEMENTED = [
+    "triad_ptq._v2.router.squisher",
+]
 
 
 @pytest.mark.parametrize("modname", V2_PACKAGES + V2_LEAF_MODULES)
@@ -41,24 +54,28 @@ def test_v2_skeleton_imports(modname: str) -> None:
     importlib.import_module(modname)
 
 
-@pytest.mark.parametrize("modname", V2_LEAF_MODULES)
+@pytest.mark.parametrize("modname", V2_LEAF_MODULES_UNIMPLEMENTED)
 def test_v2_leaf_module_marked_unimplemented(modname: str) -> None:
     mod = importlib.import_module(modname)
     assert hasattr(mod, "IMPLEMENTED"), f"{modname} missing IMPLEMENTED flag"
     assert mod.IMPLEMENTED is False
 
 
-def test_v2_leaf_modules_raise_not_implemented() -> None:
+@pytest.mark.parametrize("modname", V2_LEAF_MODULES_IMPLEMENTED)
+def test_v2_leaf_module_marked_implemented(modname: str) -> None:
+    mod = importlib.import_module(modname)
+    assert hasattr(mod, "IMPLEMENTED"), f"{modname} missing IMPLEMENTED flag"
+    assert mod.IMPLEMENTED is True
+
+
+def test_v2_unimplemented_leaves_raise_not_implemented() -> None:
     from triad_ptq._v2.rotation import sign_perm
     from triad_ptq._v2.transform import learnable_beta
-    from triad_ptq._v2.router import squisher
 
     with pytest.raises(NotImplementedError):
         sign_perm.apply_sign_perm_to_llama()
     with pytest.raises(NotImplementedError):
         learnable_beta.train_learnable_beta()
-    with pytest.raises(NotImplementedError):
-        squisher.squisher_fisher_diagonal()
 
 
 # --------------------------------------------------------------------- A3
