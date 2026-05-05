@@ -26,7 +26,7 @@ def optimize(
     progress: bool = True,
     clip_search: bool = False,
     asymmetric_calib: bool = False,
-    asym_alpha: float = 1.0,
+    asym_alpha: float = 0.5,
     asym_exclude_suffixes: tuple = ("o_proj", "down_proj"),
     return_meta: bool = False,
 ):

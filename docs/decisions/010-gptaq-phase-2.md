@@ -1,8 +1,20 @@
 # ADR-010 — Phase 2: GPTAQ asymmetric calibration mode
 
-Status: **accepted (implementation), validation pending**
+Status: **ACCEPTED — PPL win on SmolLM-135M with scope-limit + α=0.5**
 Date: 2026-05-05
 Author: Claude (autonomous engineer)
+
+## Bottom line (2026-05-05, after diagnosis + fix)
+
+| variant                                              | PPL    | Δ vs baseline |
+|------------------------------------------------------|--------|---------------|
+| TRIAD-INT4 baseline                                  | 21.149 | reference     |
+| GPTAQ asym (full, all layers)                        | 25.218 | +4.069 (regression) |
+| GPTAQ asym (excl o_proj+down_proj, α=1.0)            | 22.033 | +0.884        |
+| **GPTAQ asym (excl o_proj+down_proj, α=0.5) WINNER** | **20.627** | **−0.523 ✓** |
+
+The winning recipe is the default when `asymmetric_calib=True`:
+`asym_alpha=0.5, asym_exclude_suffixes=("o_proj","down_proj")`.
 
 ## Context
 

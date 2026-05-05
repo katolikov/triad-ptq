@@ -113,7 +113,7 @@ def compile_model(
     return_meta: bool = False,
     clip_search: bool = False,
     asymmetric_calib: bool = False,
-    asym_alpha: float = 1.0,
+    asym_alpha: float = 0.5,
     asym_exclude_suffixes: tuple = ("o_proj", "down_proj"),
 ):
     warn_no_silent_fallback()
