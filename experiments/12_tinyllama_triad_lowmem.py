@@ -1,7 +1,15 @@
 """TinyLlama TRIAD INT4 with low-memory settings (Gram on CPU).
 
-Standalone retry after the default sweep OOM'd. Writes its result back
-into results/tables/llm_sweep.json (replaces any prior TRIAD row).
+Streaming compile_model from feat/exynos-cholesky-fix keeps only one
+layer's heavy state (A, U, W_prime, H_prime) on the compute device at a
+time. Per-layer Gram matrices live on CPU via `a_device='cpu'`; the
+active layer's A is moved to MPS only for its eigh+GPTQ window then
+freed. Together with the dict-of-everything cleanup in compile.py this
+brings TinyLlama-1.1B INT4 calibration under M1 Pro 8 GB.
+
+Writes its result back into results/tables/llm_sweep.json (replaces any
+prior TRIAD row) and into results/triad_tinyllama_int4_m1.json (the
+Phase-3 acceptance file referenced by docs/decisions/...).
 """
 from __future__ import annotations
 
@@ -50,6 +58,9 @@ def main():
     print(f"calib: {len(calib)} batches of seq_len=512")
 
     t0 = time.perf_counter()
+    pre_alloc = (
+        torch.mps.current_allocated_memory() / 1e9 if dev.type == "mps" else 0.0
+    )
     compile_model(
         m,
         bits=4,
@@ -62,9 +73,20 @@ def main():
         group_size=64,
         progress=True,
         device="mps",
+        a_device="cpu",       # Phase 2: stream Gram matrices via host RAM.
     )
     calib_sec = time.perf_counter() - t0
-    print(f"TRIAD compile: {calib_sec:.0f}s")
+    post_alloc = (
+        torch.mps.current_allocated_memory() / 1e9 if dev.type == "mps" else 0.0
+    )
+    peak_alloc = (
+        torch.mps.driver_allocated_memory() / 1e9
+        if dev.type == "mps" and hasattr(torch.mps, "driver_allocated_memory") else 0.0
+    )
+    print(
+        f"TRIAD compile: {calib_sec:.0f}s | "
+        f"MPS pre={pre_alloc:.2f} GB post={post_alloc:.2f} GB peak~={peak_alloc:.2f} GB"
+    )
 
     if dev.type == "mps":
         torch.mps.empty_cache()
@@ -93,12 +115,43 @@ def main():
         "tok_per_sec": tps, "samples": samples,
     }
     out = ROOT / "results" / "tables" / "llm_sweep.json"
-    blob = json.loads(out.read_text())
-    blob["runs"] = [r for r in blob["runs"]
-                    if not (r.get("model") == MODEL and r.get("method") == "TRIAD")]
-    blob["runs"].append(row)
-    out.write_text(json.dumps(blob, indent=2))
-    print(f"wrote {out}")
+    if out.exists():
+        blob = json.loads(out.read_text())
+        blob.setdefault("runs", [])
+        blob["runs"] = [r for r in blob["runs"]
+                        if not (r.get("model") == MODEL and r.get("method") == "TRIAD")]
+        blob["runs"].append(row)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(blob, indent=2))
+        print(f"wrote {out}")
+    else:
+        print(f"(skipped llm_sweep.json: not present)")
+
+    # Phase-3 acceptance file referenced by ADRs / STATUS.md
+    acc = ROOT / "results" / "triad_tinyllama_int4_m1.json"
+    acc.parent.mkdir(parents=True, exist_ok=True)
+    acc.write_text(json.dumps({
+        "model": MODEL,
+        "method": "TRIAD",
+        "bits": 4,
+        "group_size": 64,
+        "n_calib": 8,
+        "seq_len_calib": 512,
+        "calib_sec": calib_sec,
+        "ppl_wikitext2": res["ppl"],
+        "n_eval_tokens": res["n_tokens"],
+        "tok_per_sec_decode_m1": tps,
+        "mps_peak_gb_during_calib": peak_alloc,
+        "samples": samples,
+        "notes": (
+            "Streaming compile_model + a_device='cpu' so Gram matrices live on "
+            "host RAM. PPL acceptance for Phase 3 is <= 9.45 (FP16 baseline 8.45 "
+            "+ 1.0 budget) -- this script's 8-sample seq=512 calib is the Phase-2 "
+            "OOM-fix smoke; the full Phase-3 (n_calib=128, seq=2048) is in "
+            "experiments/13_tinyllama_phase3.py if reached."
+        ),
+    }, indent=2))
+    print(f"wrote {acc}")
 
 
 if __name__ == "__main__":
