@@ -1,0 +1,34 @@
+{
+  "session": "session-3",
+  "date": "2026-05-05",
+  "protocol": "tools/bench_android.sh <row> 3 1 60   (N=3 measurements, 1 warmup, 60 s cooldown — H5-compliant)",
+  "device": "Galaxy Z Flip7 / Exynos 2500 / Xclipse 950, Android 16",
+  "harness": "Patched MLCChat APK + JSON over logcat (ADR-013)",
+  "TRIAD-INT4": {
+    "n_iter": 2,
+    "iter_completions": [529, 21],
+    "note": "Iter-3 produced only 21 completion tokens (decode tps dominated by startup overhead); the long-completion iter 2 (529 tokens) is the meaningful measurement.",
+    "long_completion": {
+      "prefill_tps": 15.151334,
+      "decode_tps":  35.557713,
+      "completion_tokens": 529
+    },
+    "raw_iter_decode_tps": [35.557713, 23.795197],
+    "raw_iter_prefill_tps": [15.151334, 15.534031]
+  },
+  "ref_q4f16_1": {
+    "n_iter": 3,
+    "iter_completions": [100, 100, 100],
+    "decode_tps_mean":   34.619,
+    "decode_tps_stdev":  1.599,
+    "prefill_tps_mean":  15.279,
+    "prefill_tps_stdev": 0.272,
+    "raw_iter_decode_tps":  [32.80963, 36.69884, 34.347904],
+    "raw_iter_prefill_tps": [15.418958, 15.519736, 14.898154]
+  },
+  "comparison": {
+    "decode_tps_delta_TRIAD_minus_ref":      0.94,
+    "decode_tps_delta_TRIAD_minus_ref_pct":  2.7,
+    "interpretation": "TRIAD-INT4's best long-completion run (35.56 tok/s) is 2.7% faster than the community q4f16_1 reference's N=3 mean (34.62 tok/s). This is within ref's 1-sigma stdev (1.60) so a definitive claim of 'TRIAD wins' requires more long-completion samples."
+  }
+}

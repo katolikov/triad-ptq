@@ -26,6 +26,8 @@ def optimize(
     progress: bool = True,
     clip_search: bool = False,
     asymmetric_calib: bool = False,
+    asym_alpha: float = 1.0,
+    asym_exclude_suffixes: tuple = ("o_proj", "down_proj"),
     return_meta: bool = False,
 ):
     """One-line PTQ entry point.
@@ -55,5 +57,7 @@ def optimize(
         progress=progress,
         clip_search=clip_search,
         asymmetric_calib=asymmetric_calib,
+        asym_alpha=asym_alpha,
+        asym_exclude_suffixes=asym_exclude_suffixes,
         return_meta=return_meta,
     )
