@@ -25,6 +25,7 @@ V2_PACKAGES = [
     "triad_ptq._v2.superweight",
     "triad_ptq._v2.lwc",
     "triad_ptq._v2.groupsize",
+    "triad_ptq._v2.calib",
 ]
 V2_LEAF_MODULES = [
     "triad_ptq._v2.rotation.sign_perm",

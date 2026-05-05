@@ -1,0 +1,69 @@
+{
+  "phase": "F",
+  "sweep": [
+    {
+      "rho": 0.001,
+      "alpha_c1": 0.0009990009990009992,
+      "alpha_c4": 9.99999999999001e-13
+    },
+    {
+      "rho": 0.01,
+      "alpha_c1": 0.009900990099009905,
+      "alpha_c4": 9.999999900000018e-09
+    },
+    {
+      "rho": 0.1,
+      "alpha_c1": 0.09090909090909093,
+      "alpha_c4": 9.99900009999001e-05
+    },
+    {
+      "rho": 0.5,
+      "alpha_c1": 0.3333333333333333,
+      "alpha_c4": 0.058823529411764705
+    },
+    {
+      "rho": 1.0,
+      "alpha_c1": 0.5,
+      "alpha_c4": 0.5
+    },
+    {
+      "rho": 2.0,
+      "alpha_c1": 0.6666666666666666,
+      "alpha_c4": 0.8
+    },
+    {
+      "rho": 5.0,
+      "alpha_c1": 0.8,
+      "alpha_c4": 0.8
+    },
+    {
+      "rho": 10.0,
+      "alpha_c1": 0.8,
+      "alpha_c4": 0.8
+    },
+    {
+      "rho": 100.0,
+      "alpha_c1": 0.8,
+      "alpha_c4": 0.8
+    },
+    {
+      "rho": 1000.0,
+      "alpha_c1": 0.8,
+      "alpha_c4": 0.8
+    },
+    {
+      "rho": 1000000.0,
+      "alpha_c1": 0.8,
+      "alpha_c4": 0.8
+    }
+  ],
+  "synthetic_schedule_summary": {
+    "n_blocks": 140,
+    "n_excluded_o_down_proj": 40,
+    "active_alpha_min": 0.3333333333333333,
+    "active_alpha_mean": 0.625466087963706,
+    "active_alpha_max": 0.7752808988764045
+  },
+  "acceptance": "alpha in [0, 0.8]; rho=1.0 => alpha=0.5 (v1 limit); o_proj/down_proj excluded",
+  "acceptance_pass": true
+}
